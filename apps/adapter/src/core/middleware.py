@@ -342,3 +342,78 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         response.headers["X-RateLimit-Reset"] = str(int(window_start + 60))
         
         return response
+
+
+class TenantMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware to handle tenant authentication and validation.
+    
+    Extracts tenant information from headers and validates credentials
+    before allowing access to protected endpoints.
+    """
+    
+    # Public endpoints that don't require authentication
+    PUBLIC_PATHS = {"/", "/health", "/docs", "/redoc", "/openapi.json"}
+    
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        """
+        Process request with tenant authentication.
+        
+        Args:
+            request: Incoming HTTP request
+            call_next: Next middleware or route handler
+            
+        Returns:
+            HTTP response or authentication error
+        """
+        # Skip authentication for public endpoints
+        if request.url.path in self.PUBLIC_PATHS:
+            return await call_next(request)
+        
+        # Skip authentication for health checks
+        if request.url.path.startswith("/health"):
+            return await call_next(request)
+        
+        # Extract authentication headers
+        api_key = request.headers.get("X-API-Key")
+        tenant_id = request.headers.get("X-Tenant-ID")
+        
+        # Validate authentication for non-public endpoints
+        if not api_key and not tenant_id:
+            logger.warning(f"Missing authentication headers for {request.url.path}")
+            
+            error_response = {
+                "error": {
+                    "code": "AUTHENTICATION_REQUIRED",
+                    "message": "Authentication required. Provide X-API-Key or X-Tenant-ID header.",
+                    "correlation_id": request.headers.get("X-Correlation-ID", "N/A"),
+                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                }
+            }
+            
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content=error_response,
+                headers={"WWW-Authenticate": "ApiKey"}
+            )
+        
+        # In development mode, allow any tenant ID
+        if settings.environment == "development":
+            # Attach tenant info to request state for use in dependencies
+            request.state.tenant_id = tenant_id or "dev-tenant"
+            request.state.api_key = api_key
+            logger.debug(f"Development mode: Authenticated tenant {request.state.tenant_id}")
+        else:
+            # TODO: In production, validate API key against database
+            # For now, just attach the headers
+            request.state.tenant_id = tenant_id or "default-tenant"
+            request.state.api_key = api_key
+        
+        # Process request
+        response = await call_next(request)
+        
+        # Add tenant ID to response headers for debugging
+        if hasattr(request.state, "tenant_id"):
+            response.headers["X-Tenant-ID"] = request.state.tenant_id
+        
+        return response

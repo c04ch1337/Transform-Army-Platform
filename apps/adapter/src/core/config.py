@@ -5,7 +5,7 @@ This module manages all configuration for the adapter service, including
 environment variables, database settings, provider credentials, and feature flags.
 """
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -82,20 +82,26 @@ class Settings(BaseSettings):
         description="Log file path (optional, logs to stdout if not set)"
     )
     
-    # Database Settings
-    database_url: str = Field(
-        default="sqlite:///./adapter.db",
-        description="Database connection URL"
+    # Database Settings (also support non-prefixed DATABASE_URL)
+    DATABASE_URL: str = Field(
+        default="postgresql://postgres:postgres@localhost:5432/transform_army",
+        alias="database_url",
+        description="Database connection URL",
+        validation_alias="DATABASE_URL"
     )
-    database_pool_size: int = Field(
-        default=5,
+    DATABASE_POOL_SIZE: int = Field(
+        default=20,
         ge=1,
-        description="Database connection pool size"
+        alias="database_pool_size",
+        description="Database connection pool size",
+        validation_alias="DATABASE_POOL_SIZE"
     )
-    database_max_overflow: int = Field(
+    DATABASE_MAX_OVERFLOW: int = Field(
         default=10,
         ge=0,
-        description="Maximum database connections beyond pool size"
+        alias="database_max_overflow",
+        description="Maximum database connections beyond pool size",
+        validation_alias="DATABASE_MAX_OVERFLOW"
     )
     
     # Provider Credentials - HubSpot

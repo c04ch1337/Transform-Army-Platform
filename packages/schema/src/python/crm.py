@@ -599,3 +599,64 @@ class SearchContactsResponse(BaseModel):
         default=None,
         description="Pagination metadata"
     )
+
+
+class ContactResponse(BaseModel):
+    """Response after creating or updating a contact."""
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "cont_12345",
+                "email": "john.doe@example.com",
+                "first_name": "John",
+                "last_name": "Doe",
+                "company": "Acme Corp",
+                "phone": "+1-555-0123",
+                "title": "VP of Sales",
+                "provider": "hubspot",
+                "provider_id": "12345",
+                "created_at": "2025-10-31T01:17:00Z",
+                "updated_at": "2025-10-31T01:17:00Z"
+            }
+        }
+    )
+    
+    id: str = Field(description="Unique contact identifier")
+    email: EmailStr = Field(description="Contact email address")
+    first_name: Optional[str] = Field(default=None, description="First name")
+    last_name: Optional[str] = Field(default=None, description="Last name")
+    company: Optional[str] = Field(default=None, description="Company name")
+    phone: Optional[str] = Field(default=None, description="Phone number")
+    title: Optional[str] = Field(default=None, description="Job title")
+    provider: str = Field(description="Provider name (e.g., 'hubspot')")
+    provider_id: str = Field(description="ID in provider's system")
+    created_at: datetime = Field(description="Creation timestamp")
+    updated_at: Optional[datetime] = Field(default=None, description="Last update timestamp")
+    custom_fields: Optional[Dict[str, Any]] = Field(default=None, description="Custom fields")
+
+
+class NoteResponse(BaseModel):
+    """Response after adding a note."""
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "note_678",
+                "contact_id": "cont_12345",
+                "content": "Initial qualification call completed.",
+                "type": "call_note",
+                "provider": "hubspot",
+                "provider_id": "note_678",
+                "created_at": "2025-10-31T01:15:00Z"
+            }
+        }
+    )
+    
+    id: str = Field(description="Unique note identifier")
+    contact_id: Optional[str] = Field(default=None, description="Associated contact ID")
+    content: str = Field(description="Note content")
+    type: Optional[str] = Field(default=None, description="Note type")
+    provider: str = Field(description="Provider name (e.g., 'hubspot')")
+    provider_id: str = Field(description="ID in provider's system")
+    created_at: datetime = Field(description="Creation timestamp")

@@ -1,20 +1,23 @@
 """
 HubSpot CRM provider implementation.
 
-This is a stub implementation that simulates HubSpot API interactions
-for testing and development purposes.
+This module provides real integration with the HubSpot API v3 for CRM operations
+including contacts, deals, notes, and more.
 """
 
 from typing import Any, Dict, List, Optional
 from datetime import datetime
-import uuid
+import asyncio
+import httpx
 
 from ..base import (
-    ProviderPlugin,
+    CRMProvider,
     ProviderCapability,
     AuthenticationError,
     ValidationError,
-    NotFoundError
+    NotFoundError,
+    RateLimitError,
+    ProviderError
 )
 from ...core.logging import get_logger
 
@@ -22,25 +25,49 @@ from ...core.logging import get_logger
 logger = get_logger(__name__)
 
 
-class HubSpotProvider(ProviderPlugin):
+class HubSpotProvider(CRMProvider):
     """
-    HubSpot CRM provider stub implementation.
+    HubSpot CRM provider implementation using HubSpot API v3.
     
-    Simulates HubSpot API for contact, company, deal, and note operations.
+    Supports both Private App tokens (API keys) and OAuth2 access tokens.
+    Implements rate limiting, retry logic, and proper error handling.
     """
+    
+    # HubSpot API configuration
+    DEFAULT_API_BASE = "https://api.hubapi.com"
+    DEFAULT_TIMEOUT = httpx.Timeout(30.0, read=60.0)
+    USER_AGENT = "Transform-Army-Adapter/1.0"
+    
+    # Rate limiting configuration
+    MAX_REQUESTS_PER_10_SECONDS = 100
+    RATE_LIMIT_WINDOW = 10
     
     def __init__(self, credentials: Dict[str, Any]):
         """
         Initialize HubSpot provider.
         
         Args:
-            credentials: HubSpot credentials including api_key
+            credentials: HubSpot credentials including:
+                - auth_type: 'api_key' or 'oauth2'
+                - api_key: Private App token (for api_key auth)
+                - access_token: OAuth2 access token (for oauth2 auth)
+                - refresh_token: OAuth2 refresh token (optional)
+                - api_base_url: Custom API base URL (optional)
         """
         super().__init__(credentials)
-        self._contacts = {}
-        self._companies = {}
-        self._deals = {}
-        self._notes = {}
+        
+        self.auth_type = credentials.get("auth_type", "api_key")
+        self.api_key = credentials.get("api_key")
+        self.access_token = credentials.get("access_token")
+        self.refresh_token = credentials.get("refresh_token")
+        self.api_base_url = credentials.get("api_base_url", self.DEFAULT_API_BASE)
+        
+        # Rate limiting state
+        self._request_times: List[float] = []
+        self._rate_limit_lock = asyncio.Lock()
+        
+        # Initialize HTTP client
+        self._client = None
     
     @property
     def provider_name(self) -> str:
@@ -57,9 +84,158 @@ class HubSpotProvider(ProviderPlugin):
             ProviderCapability.CRM_NOTES
         ]
     
+    def _get_http_client(self) -> httpx.AsyncClient:
+        """Get or create HTTP client."""
+        if self._client is None:
+            headers = {
+                "User-Agent": self.USER_AGENT,
+                "Content-Type": "application/json"
+            }
+            
+            # Add authorization header based on auth type
+            if self.auth_type == "oauth2" and self.access_token:
+                headers["Authorization"] = f"Bearer {self.access_token}"
+            elif self.auth_type == "api_key" and self.api_key:
+                headers["Authorization"] = f"Bearer {self.api_key}"
+            
+            self._client = httpx.AsyncClient(
+                base_url=self.api_base_url,
+                headers=headers,
+                timeout=self.DEFAULT_TIMEOUT,
+                follow_redirects=True
+            )
+        
+        return self._client
+    
+    async def _enforce_rate_limit(self):
+        """Enforce rate limiting to respect HubSpot's limits."""
+        async with self._rate_limit_lock:
+            now = asyncio.get_event_loop().time()
+            
+            # Remove requests older than the rate limit window
+            self._request_times = [
+                t for t in self._request_times 
+                if now - t < self.RATE_LIMIT_WINDOW
+            ]
+            
+            # If we're at the limit, wait until the oldest request expires
+            if len(self._request_times) >= self.MAX_REQUESTS_PER_10_SECONDS:
+                oldest_request = self._request_times[0]
+                wait_time = self.RATE_LIMIT_WINDOW - (now - oldest_request)
+                
+                if wait_time > 0:
+                    logger.warning(
+                        f"Rate limit approaching, waiting {wait_time:.2f}s before request"
+                    )
+                    await asyncio.sleep(wait_time)
+                    now = asyncio.get_event_loop().time()
+            
+            # Record this request
+            self._request_times.append(now)
+    
+    async def _make_request(
+        self,
+        method: str,
+        endpoint: str,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Make HTTP request to HubSpot API with rate limiting and error handling.
+        
+        Args:
+            method: HTTP method (GET, POST, PATCH, etc.)
+            endpoint: API endpoint (relative to base URL)
+            **kwargs: Additional arguments for httpx request
+            
+        Returns:
+            Response data as dictionary
+            
+        Raises:
+            RateLimitError: If rate limit is exceeded
+            AuthenticationError: If authentication fails
+            ValidationError: If request validation fails
+            NotFoundError: If resource not found
+            ProviderError: For other API errors
+        """
+        # Enforce rate limiting
+        await self._enforce_rate_limit()
+        
+        client = self._get_http_client()
+        
+        try:
+            response = await client.request(method, endpoint, **kwargs)
+            
+            # Handle rate limiting
+            if response.status_code == 429:
+                retry_after = int(response.headers.get("Retry-After", 10))
+                raise RateLimitError(
+                    "HubSpot rate limit exceeded",
+                    provider=self.provider_name,
+                    retry_after=retry_after
+                )
+            
+            # Handle authentication errors
+            if response.status_code == 401:
+                raise AuthenticationError(
+                    "Invalid HubSpot credentials or expired token",
+                    provider=self.provider_name,
+                    provider_response=response.text
+                )
+            
+            # Handle validation errors
+            if response.status_code == 400:
+                error_data = response.json() if response.text else {}
+                raise ValidationError(
+                    f"HubSpot validation error: {error_data.get('message', 'Invalid request')}",
+                    provider=self.provider_name,
+                    provider_response=error_data
+                )
+            
+            # Handle not found
+            if response.status_code == 404:
+                raise NotFoundError(
+                    "Resource not found in HubSpot",
+                    provider=self.provider_name,
+                    provider_response=response.text
+                )
+            
+            # Handle server errors
+            if response.status_code >= 500:
+                raise ProviderError(
+                    f"HubSpot server error: {response.status_code}",
+                    provider=self.provider_name,
+                    provider_response=response.text
+                )
+            
+            # Raise for other error status codes
+            response.raise_for_status()
+            
+            # Return JSON response
+            return response.json() if response.text else {}
+            
+        except httpx.HTTPError as e:
+            if isinstance(e, httpx.TimeoutException):
+                raise ProviderError(
+                    "Request to HubSpot timed out",
+                    provider=self.provider_name,
+                    provider_response=str(e)
+                )
+            elif isinstance(e, httpx.NetworkError):
+                raise ProviderError(
+                    "Network error connecting to HubSpot",
+                    provider=self.provider_name,
+                    provider_response=str(e)
+                )
+            else:
+                raise ProviderError(
+                    f"HTTP error: {str(e)}",
+                    provider=self.provider_name,
+                    provider_response=str(e)
+                )
+    
     async def validate_credentials(self) -> bool:
         """
-        Validate HubSpot credentials.
+        Validate HubSpot credentials by making a test API call.
         
         Returns:
             True if credentials are valid
@@ -67,22 +243,31 @@ class HubSpotProvider(ProviderPlugin):
         Raises:
             AuthenticationError: If credentials are invalid
         """
-        api_key = self.credentials.get("api_key")
+        if self.auth_type == "oauth2" and not self.access_token:
+            raise AuthenticationError(
+                "Missing OAuth2 access token",
+                provider=self.provider_name
+            )
         
-        if not api_key:
+        if self.auth_type == "api_key" and not self.api_key:
             raise AuthenticationError(
                 "Missing HubSpot API key",
                 provider=self.provider_name
             )
         
-        if len(api_key) < 20:
+        try:
+            # Test credentials with a simple API call
+            await self._make_request("GET", "/crm/v3/objects/contacts", params={"limit": 1})
+            logger.info(f"HubSpot credentials validated successfully")
+            return True
+        except AuthenticationError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to validate HubSpot credentials: {e}")
             raise AuthenticationError(
-                "Invalid HubSpot API key format",
+                f"Failed to validate credentials: {str(e)}",
                 provider=self.provider_name
             )
-        
-        logger.info(f"HubSpot credentials validated for key: {api_key[:10]}...")
-        return True
     
     async def execute_action(
         self,
@@ -100,26 +285,21 @@ class HubSpotProvider(ProviderPlugin):
             
         Returns:
             Action result
-            
-        Raises:
-            ValidationError: If parameters are invalid
-            NotFoundError: If resource not found
         """
         action_map = {
-            "create_contact": self._create_contact,
-            "update_contact": self._update_contact,
-            "get_contact": self._get_contact,
-            "search_contacts": self._search_contacts,
-            "create_company": self._create_company,
-            "create_deal": self._create_deal,
-            "add_note": self._add_note
+            "create_contact": self.create_contact,
+            "update_contact": self.update_contact,
+            "search_contacts": self.search_contacts,
+            "add_note": self.add_note,
+            "create_deal": self.create_deal
         }
         
         handler = action_map.get(action)
         if not handler:
             raise ValueError(f"Unsupported action: {action}")
         
-        return await handler(parameters, idempotency_key)
+        # Execute the handler with parameters
+        return await handler(**parameters)
     
     def normalize_response(
         self,
@@ -127,7 +307,7 @@ class HubSpotProvider(ProviderPlugin):
         action: str
     ) -> Dict[str, Any]:
         """
-        Normalize HubSpot response.
+        Normalize HubSpot response to standard format.
         
         Args:
             provider_response: Raw HubSpot response
@@ -136,7 +316,7 @@ class HubSpotProvider(ProviderPlugin):
         Returns:
             Normalized response
         """
-        # Stub implementation - responses are already normalized
+        # HubSpot responses are already in a good format
         return provider_response
     
     async def health_check(self) -> bool:
@@ -147,222 +327,386 @@ class HubSpotProvider(ProviderPlugin):
         except Exception:
             return False
     
-    async def _create_contact(
+    async def create_contact(
         self,
-        parameters: Dict[str, Any],
-        idempotency_key: Optional[str]
+        email: str,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None,
+        company: Optional[str] = None,
+        phone: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Create contact in HubSpot."""
-        contact_data = parameters.get("contact", {})
+        """
+        Create a new contact in HubSpot.
         
-        # Validate required fields
-        if not contact_data.get("email"):
+        Args:
+            email: Contact email address (required)
+            first_name: Contact first name
+            last_name: Contact last name
+            company: Company name
+            phone: Phone number
+            metadata: Additional custom fields
+            
+        Returns:
+            Dictionary with contact data
+        """
+        if not email:
             raise ValidationError(
                 "Email is required for contact creation",
                 provider=self.provider_name,
                 action="create_contact"
             )
         
-        # Generate contact ID
-        contact_id = f"hs_cont_{uuid.uuid4().hex[:12]}"
-        
-        # Store contact
-        self._contacts[contact_id] = {
-            "id": contact_id,
-            "email": contact_data.get("email"),
-            "first_name": contact_data.get("first_name"),
-            "last_name": contact_data.get("last_name"),
-            "company": contact_data.get("company"),
-            "phone": contact_data.get("phone"),
-            "title": contact_data.get("title"),
-            "custom_fields": contact_data.get("custom_fields", {}),
-            "created_at": datetime.utcnow().isoformat() + "Z",
-            "updated_at": datetime.utcnow().isoformat() + "Z"
+        # Build properties for HubSpot
+        properties = {
+            "email": email
         }
+        
+        if first_name:
+            properties["firstname"] = first_name
+        if last_name:
+            properties["lastname"] = last_name
+        if company:
+            properties["company"] = company
+        if phone:
+            properties["phone"] = phone
+        
+        # Add metadata as custom properties
+        if metadata:
+            properties.update(metadata)
+        
+        # Make API request
+        response = await self._make_request(
+            "POST",
+            "/crm/v3/objects/contacts",
+            json={"properties": properties}
+        )
+        
+        # Extract contact data
+        contact_id = response.get("id")
+        props = response.get("properties", {})
         
         return {
             "id": f"cont_{contact_id}",
             "provider": self.provider_name,
             "provider_id": contact_id,
-            "data": {
-                **self._contacts[contact_id],
-                "url": f"https://app.hubspot.com/contacts/{contact_id}"
-            }
+            "email": props.get("email"),
+            "first_name": props.get("firstname"),
+            "last_name": props.get("lastname"),
+            "company": props.get("company"),
+            "phone": props.get("phone"),
+            "title": props.get("jobtitle"),
+            "created_at": props.get("createdate"),
+            "updated_at": props.get("lastmodifieddate"),
+            "url": f"https://app.hubspot.com/contacts/{contact_id}"
         }
     
-    async def _update_contact(
+    async def update_contact(
         self,
-        parameters: Dict[str, Any],
-        idempotency_key: Optional[str]
+        contact_id: str,
+        updates: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Update contact in HubSpot."""
-        contact_id = parameters.get("contact_id")
-        updates = parameters.get("updates", {})
+        """
+        Update an existing contact in HubSpot.
         
-        if contact_id not in self._contacts:
-            raise NotFoundError(
-                f"Contact not found: {contact_id}",
+        Args:
+            contact_id: ID of the contact to update
+            updates: Dictionary of fields to update
+            
+        Returns:
+            Dictionary with updated contact data
+        """
+        if not contact_id:
+            raise ValidationError(
+                "Contact ID is required",
                 provider=self.provider_name,
                 action="update_contact"
             )
         
-        # Update contact
-        self._contacts[contact_id].update(updates)
-        self._contacts[contact_id]["updated_at"] = datetime.utcnow().isoformat() + "Z"
+        # Remove 'cont_' prefix if present
+        if contact_id.startswith("cont_"):
+            contact_id = contact_id[5:]
+        
+        # Map field names to HubSpot property names
+        property_mapping = {
+            "first_name": "firstname",
+            "last_name": "lastname",
+            "title": "jobtitle"
+        }
+        
+        properties = {}
+        for key, value in updates.items():
+            hubspot_key = property_mapping.get(key, key)
+            properties[hubspot_key] = value
+        
+        # Make API request
+        response = await self._make_request(
+            "PATCH",
+            f"/crm/v3/objects/contacts/{contact_id}",
+            json={"properties": properties}
+        )
+        
+        # Extract contact data
+        props = response.get("properties", {})
         
         return {
             "id": f"cont_{contact_id}",
             "provider": self.provider_name,
             "provider_id": contact_id,
-            "data": self._contacts[contact_id]
+            "email": props.get("email"),
+            "first_name": props.get("firstname"),
+            "last_name": props.get("lastname"),
+            "company": props.get("company"),
+            "phone": props.get("phone"),
+            "title": props.get("jobtitle"),
+            "created_at": props.get("createdate"),
+            "updated_at": props.get("lastmodifieddate")
         }
     
-    async def _get_contact(
+    async def search_contacts(
         self,
-        parameters: Dict[str, Any],
-        idempotency_key: Optional[str]
+        query: Optional[str] = None,
+        filters: Optional[Dict[str, Any]] = None,
+        limit: int = 10,
+        offset: int = 0
     ) -> Dict[str, Any]:
-        """Get contact from HubSpot."""
-        contact_id = parameters.get("contact_id")
+        """
+        Search for contacts in HubSpot.
         
-        if contact_id not in self._contacts:
-            raise NotFoundError(
-                f"Contact not found: {contact_id}",
-                provider=self.provider_name,
-                action="get_contact"
-            )
-        
-        return {
-            "id": f"cont_{contact_id}",
-            "provider": self.provider_name,
-            "provider_id": contact_id,
-            "data": self._contacts[contact_id]
+        Args:
+            query: Search query string
+            filters: Additional filters to apply
+            limit: Maximum number of results
+            offset: Number of results to skip
+            
+        Returns:
+            Dictionary with matches and pagination info
+        """
+        # Build HubSpot search request
+        search_request = {
+            "limit": min(limit, 100),  # HubSpot max is 100
+            "after": offset if offset > 0 else None,
+            "filterGroups": []
         }
-    
-    async def _search_contacts(
-        self,
-        parameters: Dict[str, Any],
-        idempotency_key: Optional[str]
-    ) -> Dict[str, Any]:
-        """Search contacts in HubSpot."""
-        query = parameters.get("query", "")
         
-        # Simple search - match against email, first_name, last_name
+        # Add query as email/name filter
+        if query:
+            filter_group = {
+                "filters": [
+                    {
+                        "propertyName": "email",
+                        "operator": "CONTAINS_TOKEN",
+                        "value": query
+                    }
+                ]
+            }
+            search_request["filterGroups"].append(filter_group)
+        
+        # Add additional filters
+        if filters:
+            for key, value in filters.items():
+                filter_group = {
+                    "filters": [
+                        {
+                            "propertyName": key,
+                            "operator": "EQ",
+                            "value": value
+                        }
+                    ]
+                }
+                search_request["filterGroups"].append(filter_group)
+        
+        # Make API request
+        response = await self._make_request(
+            "POST",
+            "/crm/v3/objects/contacts/search",
+            json=search_request
+        )
+        
+        # Extract results
+        results = response.get("results", [])
         matches = []
-        for contact_id, contact in self._contacts.items():
-            if (query.lower() in str(contact.get("email", "")).lower() or
-                query.lower() in str(contact.get("first_name", "")).lower() or
-                query.lower() in str(contact.get("last_name", "")).lower()):
-                matches.append({
-                    "id": f"cont_{contact_id}",
-                    "email": contact["email"],
-                    "first_name": contact.get("first_name"),
-                    "last_name": contact.get("last_name"),
-                    "company": contact.get("company"),
-                    "score": 0.95
-                })
+        
+        for result in results:
+            props = result.get("properties", {})
+            contact_id = result.get("id")
+            
+            matches.append({
+                "id": f"cont_{contact_id}",
+                "email": props.get("email"),
+                "first_name": props.get("firstname"),
+                "last_name": props.get("lastname"),
+                "company": props.get("company"),
+                "title": props.get("jobtitle"),
+                "phone": props.get("phone"),
+                "score": 1.0,  # HubSpot doesn't provide relevance score
+                "url": f"https://app.hubspot.com/contacts/{contact_id}"
+            })
+        
+        # Build pagination info
+        total = response.get("total", len(matches))
+        has_next = "paging" in response and "next" in response["paging"]
         
         return {
             "matches": matches,
             "pagination": {
-                "total_items": len(matches),
-                "has_next": False
+                "total_items": total,
+                "has_next": has_next
             }
         }
     
-    async def _create_company(
+    async def add_note(
         self,
-        parameters: Dict[str, Any],
-        idempotency_key: Optional[str]
+        contact_id: str,
+        note_text: str,
+        note_type: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Create company in HubSpot."""
-        company_data = parameters.get("company", {})
+        """
+        Add a note to a contact in HubSpot.
         
-        # Validate required fields
-        if not company_data.get("name"):
+        Args:
+            contact_id: ID of the contact
+            note_text: Content of the note
+            note_type: Type of note (ignored, HubSpot has its own types)
+            
+        Returns:
+            Dictionary with note data
+        """
+        if not contact_id:
             raise ValidationError(
-                "Name is required for company creation",
+                "Contact ID is required",
                 provider=self.provider_name,
-                action="create_company"
+                action="add_note"
             )
         
-        # Generate company ID
-        company_id = f"hs_comp_{uuid.uuid4().hex[:12]}"
-        
-        # Store company
-        self._companies[company_id] = {
-            "id": company_id,
-            "name": company_data.get("name"),
-            "domain": company_data.get("domain"),
-            "industry": company_data.get("industry"),
-            "created_at": datetime.utcnow().isoformat() + "Z"
-        }
-        
-        return {
-            "id": f"comp_{company_id}",
-            "provider": self.provider_name,
-            "provider_id": company_id,
-            "data": self._companies[company_id]
-        }
-    
-    async def _create_deal(
-        self,
-        parameters: Dict[str, Any],
-        idempotency_key: Optional[str]
-    ) -> Dict[str, Any]:
-        """Create deal in HubSpot."""
-        deal_data = parameters.get("deal", {})
-        
-        # Validate required fields
-        if not deal_data.get("name"):
+        if not note_text:
             raise ValidationError(
-                "Name is required for deal creation",
+                "Note text is required",
                 provider=self.provider_name,
-                action="create_deal"
+                action="add_note"
             )
         
-        # Generate deal ID
-        deal_id = f"hs_deal_{uuid.uuid4().hex[:12]}"
+        # Remove 'cont_' prefix if present
+        if contact_id.startswith("cont_"):
+            contact_id = contact_id[5:]
         
-        # Store deal
-        self._deals[deal_id] = {
-            "id": deal_id,
-            "name": deal_data.get("name"),
-            "amount": deal_data.get("amount"),
-            "stage": deal_data.get("stage"),
-            "created_at": datetime.utcnow().isoformat() + "Z"
+        # Create note with association to contact
+        note_data = {
+            "properties": {
+                "hs_note_body": note_text,
+                "hs_timestamp": datetime.utcnow().isoformat() + "Z"
+            },
+            "associations": [
+                {
+                    "to": {"id": contact_id},
+                    "types": [
+                        {
+                            "associationCategory": "HUBSPOT_DEFINED",
+                            "associationTypeId": 202  # Note to Contact association
+                        }
+                    ]
+                }
+            ]
         }
         
-        return {
-            "id": f"deal_{deal_id}",
-            "provider": self.provider_name,
-            "provider_id": deal_id,
-            "data": self._deals[deal_id]
-        }
-    
-    async def _add_note(
-        self,
-        parameters: Dict[str, Any],
-        idempotency_key: Optional[str]
-    ) -> Dict[str, Any]:
-        """Add note to contact/company/deal in HubSpot."""
-        note_data = parameters.get("note", {})
-        contact_id = parameters.get("contact_id")
+        # Make API request
+        response = await self._make_request(
+            "POST",
+            "/crm/v3/objects/notes",
+            json=note_data
+        )
         
-        # Generate note ID
-        note_id = f"hs_note_{uuid.uuid4().hex[:12]}"
-        
-        # Store note
-        self._notes[note_id] = {
-            "id": note_id,
-            "content": note_data.get("content"),
-            "contact_id": contact_id,
-            "created_at": datetime.utcnow().isoformat() + "Z"
-        }
+        # Extract note data
+        note_id = response.get("id")
+        props = response.get("properties", {})
         
         return {
             "id": f"note_{note_id}",
             "provider": self.provider_name,
             "provider_id": note_id,
-            "data": self._notes[note_id]
+            "contact_id": f"cont_{contact_id}",
+            "content": props.get("hs_note_body"),
+            "type": note_type or "note",
+            "created_at": props.get("hs_timestamp")
+        }
+    
+    async def create_deal(
+        self,
+        deal_name: str,
+        amount: Optional[float] = None,
+        stage: Optional[str] = None,
+        associated_contacts: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a new deal in HubSpot.
+        
+        Args:
+            deal_name: Name of the deal
+            amount: Deal amount
+            stage: Deal stage
+            associated_contacts: List of contact IDs to associate
+            
+        Returns:
+            Dictionary with deal data
+        """
+        if not deal_name:
+            raise ValidationError(
+                "Deal name is required",
+                provider=self.provider_name,
+                action="create_deal"
+            )
+        
+        # Build properties
+        properties = {
+            "dealname": deal_name
+        }
+        
+        if amount is not None:
+            properties["amount"] = str(amount)
+        if stage:
+            properties["dealstage"] = stage
+        
+        # Build associations
+        associations = []
+        if associated_contacts:
+            for contact_id in associated_contacts:
+                # Remove 'cont_' prefix if present
+                if contact_id.startswith("cont_"):
+                    contact_id = contact_id[5:]
+                
+                associations.append({
+                    "to": {"id": contact_id},
+                    "types": [
+                        {
+                            "associationCategory": "HUBSPOT_DEFINED",
+                            "associationTypeId": 3  # Deal to Contact association
+                        }
+                    ]
+                })
+        
+        # Build request
+        deal_data = {"properties": properties}
+        if associations:
+            deal_data["associations"] = associations
+        
+        # Make API request
+        response = await self._make_request(
+            "POST",
+            "/crm/v3/objects/deals",
+            json=deal_data
+        )
+        
+        # Extract deal data
+        deal_id = response.get("id")
+        props = response.get("properties", {})
+        
+        return {
+            "id": f"deal_{deal_id}",
+            "provider": self.provider_name,
+            "provider_id": deal_id,
+            "name": props.get("dealname"),
+            "amount": float(props.get("amount", 0)) if props.get("amount") else None,
+            "stage": props.get("dealstage"),
+            "created_at": props.get("createdate"),
+            "url": f"https://app.hubspot.com/contacts/{deal_id}"
         }

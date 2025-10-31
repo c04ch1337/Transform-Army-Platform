@@ -517,3 +517,75 @@ class TicketMetrics(BaseModel):
         default=None,
         description="Average time to first response (hours)"
     )
+
+
+class TicketResponse(BaseModel):
+    """Response after creating or updating a ticket."""
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "tick_789",
+                "ticket_number": "ZD-12345",
+                "subject": "Unable to login to dashboard",
+                "description": "User reports seeing 'Invalid credentials' error.",
+                "status": "open",
+                "priority": "high",
+                "requester_email": "support-request@example.com",
+                "requester_name": "Jane Smith",
+                "provider": "zendesk",
+                "provider_id": "12345",
+                "created_at": "2025-10-31T01:17:00Z",
+                "updated_at": "2025-10-31T01:17:00Z",
+                "url": "https://support.example.com/tickets/12345"
+            }
+        }
+    )
+    
+    id: str = Field(description="Unique ticket identifier")
+    ticket_number: Optional[str] = Field(default=None, description="Ticket number")
+    subject: str = Field(description="Ticket subject")
+    description: Optional[str] = Field(default=None, description="Ticket description")
+    status: str = Field(description="Ticket status")
+    priority: Optional[str] = Field(default=None, description="Ticket priority")
+    requester_email: Optional[EmailStr] = Field(default=None, description="Requester email")
+    requester_name: Optional[str] = Field(default=None, description="Requester name")
+    assignee_id: Optional[str] = Field(default=None, description="Assignee ID")
+    assignee_name: Optional[str] = Field(default=None, description="Assignee name")
+    tags: Optional[List[str]] = Field(default=None, description="Ticket tags")
+    provider: str = Field(description="Provider name (e.g., 'zendesk')")
+    provider_id: str = Field(description="ID in provider's system")
+    created_at: datetime = Field(description="Creation timestamp")
+    updated_at: Optional[datetime] = Field(default=None, description="Last update timestamp")
+    url: Optional[HttpUrl] = Field(default=None, description="URL to view ticket")
+    custom_fields: Optional[Dict[str, Any]] = Field(default=None, description="Custom fields")
+
+
+class CommentResponse(BaseModel):
+    """Response after adding a comment."""
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "comment_456",
+                "ticket_id": "tick_789",
+                "body": "I've reviewed the logs and identified the issue.",
+                "is_public": False,
+                "author_id": "agent_support_001",
+                "author_name": "Support Agent",
+                "provider": "zendesk",
+                "provider_id": "comment_456",
+                "created_at": "2025-10-31T01:20:00Z"
+            }
+        }
+    )
+    
+    id: str = Field(description="Unique comment identifier")
+    ticket_id: str = Field(description="Associated ticket ID")
+    body: str = Field(description="Comment body/content")
+    is_public: bool = Field(description="Whether comment is visible to requester")
+    author_id: Optional[str] = Field(default=None, description="Author ID")
+    author_name: Optional[str] = Field(default=None, description="Author name")
+    provider: str = Field(description="Provider name (e.g., 'zendesk')")
+    provider_id: str = Field(description="ID in provider's system")
+    created_at: datetime = Field(description="Creation timestamp")

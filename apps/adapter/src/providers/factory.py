@@ -5,10 +5,10 @@ This module provides a factory for creating and managing provider instances
 based on tenant configuration and provider types.
 """
 
-from typing import Dict, Optional, Type
+from typing import Any, Dict, Optional, Type
 from enum import Enum
 
-from .base import ProviderPlugin, ProviderCapability, AuthenticationError
+from .base import ProviderPlugin, ProviderCapability, AuthenticationError, CRMProvider, HelpdeskProvider, CalendarProvider
 from ..core.logging import get_logger
 from ..core.config import settings
 
@@ -283,6 +283,248 @@ class ProviderFactory:
         except Exception as e:
             logger.error(f"Health check failed for {provider_type}: {e}")
             return False
+    
+    async def get_crm_provider(
+        self,
+        tenant_config: Dict[str, Any]
+    ) -> CRMProvider:
+        """
+        Get CRM provider instance for a tenant.
+        
+        Args:
+            tenant_config: Tenant configuration containing provider settings
+                Expected format:
+                {
+                    "crm": {
+                        "provider": "hubspot",
+                        "auth_type": "api_key",
+                        "api_key": "...",
+                        "access_token": "...",  # for OAuth2
+                        "refresh_token": "...",  # for OAuth2
+                        "api_base_url": "https://api.hubapi.com"
+                    }
+                }
+        
+        Returns:
+            CRMProvider instance
+            
+        Raises:
+            ValueError: If CRM provider not configured
+            AuthenticationError: If credentials are invalid
+        """
+        crm_config = tenant_config.get("crm", {})
+        
+        if not crm_config:
+            raise ValueError("CRM provider not configured for tenant")
+        
+        provider_name = crm_config.get("provider")
+        if not provider_name:
+            raise ValueError("CRM provider name not specified")
+        
+        tenant_id = tenant_config.get("tenant_id", "default")
+        
+        # Cache key
+        cache_key = f"{tenant_id}:{provider_name}"
+        
+        # Return cached provider if available
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+        
+        # Get provider class
+        provider_class = self._registry.get_provider_class(provider_name)
+        if not provider_class:
+            raise ValueError(f"CRM provider not found: {provider_name}")
+        
+        # Extract credentials from config
+        credentials = {
+            k: v for k, v in crm_config.items()
+            if k != "provider"
+        }
+        
+        # Create provider instance
+        logger.info(f"Creating CRM provider instance: {provider_name} for tenant {tenant_id}")
+        provider = provider_class(credentials)
+        
+        # Validate it's a CRM provider
+        if not isinstance(provider, CRMProvider):
+            raise ValueError(f"Provider {provider_name} is not a CRM provider")
+        
+        # Validate credentials
+        try:
+            await provider.validate_credentials()
+        except Exception as e:
+            logger.error(f"Failed to validate credentials for {provider_name}: {e}")
+            raise AuthenticationError(
+                f"Invalid credentials for {provider_name}",
+                provider=provider_name
+            )
+        
+        # Cache the provider
+        self._cache[cache_key] = provider
+        
+        return provider
+    
+    async def get_helpdesk_provider(
+        self,
+        tenant_config: Dict[str, Any]
+    ) -> HelpdeskProvider:
+        """
+        Get helpdesk provider instance for a tenant.
+        
+        Args:
+            tenant_config: Tenant configuration containing provider settings
+                Expected format:
+                {
+                    "helpdesk": {
+                        "provider": "zendesk",
+                        "auth_type": "api_token",
+                        "subdomain": "yourcompany",
+                        "email": "admin@yourcompany.com",
+                        "api_token": "...",
+                        "api_base_url": "https://yourcompany.zendesk.com"
+                    }
+                }
+        
+        Returns:
+            HelpdeskProvider instance
+            
+        Raises:
+            ValueError: If helpdesk provider not configured
+            AuthenticationError: If credentials are invalid
+        """
+        helpdesk_config = tenant_config.get("helpdesk", {})
+        
+        if not helpdesk_config:
+            raise ValueError("Helpdesk provider not configured for tenant")
+        
+        provider_name = helpdesk_config.get("provider")
+        if not provider_name:
+            raise ValueError("Helpdesk provider name not specified")
+        
+        tenant_id = tenant_config.get("tenant_id", "default")
+        
+        # Cache key
+        cache_key = f"{tenant_id}:{provider_name}"
+        
+        # Return cached provider if available
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+        
+        # Get provider class
+        provider_class = self._registry.get_provider_class(provider_name)
+        if not provider_class:
+            raise ValueError(f"Helpdesk provider not found: {provider_name}")
+        
+        # Extract credentials from config
+        credentials = {
+            k: v for k, v in helpdesk_config.items()
+            if k != "provider"
+        }
+        
+        # Create provider instance
+        logger.info(f"Creating helpdesk provider instance: {provider_name} for tenant {tenant_id}")
+        provider = provider_class(credentials)
+        
+        # Validate it's a helpdesk provider
+        if not isinstance(provider, HelpdeskProvider):
+            raise ValueError(f"Provider {provider_name} is not a helpdesk provider")
+        
+        # Validate credentials
+        try:
+            await provider.validate_credentials()
+        except Exception as e:
+            logger.error(f"Failed to validate credentials for {provider_name}: {e}")
+            raise AuthenticationError(
+                f"Invalid credentials for {provider_name}",
+                provider=provider_name
+            )
+        
+        # Cache the provider
+        self._cache[cache_key] = provider
+        
+        return provider
+    
+    async def get_calendar_provider(
+        self,
+        tenant_config: Dict[str, Any]
+    ) -> CalendarProvider:
+        """
+        Get calendar provider instance for a tenant.
+        
+        Args:
+            tenant_config: Tenant configuration containing provider settings
+                Expected format:
+                {
+                    "calendar": {
+                        "provider": "google",
+                        "auth_type": "oauth2",
+                        "access_token": "ya29.xxx",
+                        "refresh_token": "1//xxx",
+                        "client_id": "xxx.apps.googleusercontent.com",
+                        "client_secret": "xxx",
+                        "token_uri": "https://oauth2.googleapis.com/token",
+                        "default_calendar_id": "primary"
+                    }
+                }
+        
+        Returns:
+            CalendarProvider instance
+            
+        Raises:
+            ValueError: If calendar provider not configured
+            AuthenticationError: If credentials are invalid
+        """
+        calendar_config = tenant_config.get("calendar", {})
+        
+        if not calendar_config:
+            raise ValueError("Calendar provider not configured for tenant")
+        
+        provider_name = calendar_config.get("provider")
+        if not provider_name:
+            raise ValueError("Calendar provider name not specified")
+        
+        tenant_id = tenant_config.get("tenant_id", "default")
+        
+        # Cache key
+        cache_key = f"{tenant_id}:{provider_name}"
+        
+        # Return cached provider if available
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+        
+        # Get provider class
+        provider_class = self._registry.get_provider_class(provider_name)
+        if not provider_class:
+            raise ValueError(f"Calendar provider not found: {provider_name}")
+        
+        # Extract credentials from config
+        credentials = {
+            k: v for k, v in calendar_config.items()
+            if k != "provider"
+        }
+        
+        # Create provider instance
+        logger.info(f"Creating calendar provider instance: {provider_name} for tenant {tenant_id}")
+        provider = provider_class(credentials)
+        
+        # Validate it's a calendar provider
+        if not isinstance(provider, CalendarProvider):
+            raise ValueError(f"Provider {provider_name} is not a calendar provider")
+        
+        # Validate credentials
+        try:
+            await provider.validate_credentials()
+        except Exception as e:
+            logger.error(f"Failed to validate credentials for {provider_name}: {e}")
+            raise AuthenticationError(
+                f"Invalid credentials for {provider_name}",
+                provider=provider_name
+            )
+        
+        # Cache the provider
+        self._cache[cache_key] = provider
+        
+        return provider
 
 
 # Global provider factory instance

@@ -1,12 +1,12 @@
 """
-CRM API endpoints for the adapter service.
+Helpdesk API endpoints for the adapter service.
 
-This module provides REST API endpoints for CRM operations including
-creating/updating contacts, searching contacts, and adding notes.
+This module provides REST API endpoints for helpdesk operations including
+creating/updating tickets, searching tickets, and adding comments.
 """
 
 from datetime import datetime
-from typing import Annotated, Dict, Any
+from typing import Annotated, Dict, Any, List, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, status
@@ -17,11 +17,11 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../.."))
 
-from packages.schema.src.python.crm import (
-    ContactResponse,
-    NoteResponse,
-    SearchContactsResponse,
-    ContactSearchMatch
+from packages.schema.src.python.helpdesk import (
+    TicketResponse,
+    CommentResponse,
+    SearchTicketsResponse,
+    TicketSearchMatch
 )
 from packages.schema.src.python.base import PaginationResponse
 
@@ -29,13 +29,13 @@ from ..core.dependencies import (
     get_tenant_config,
     get_tenant_id,
     get_correlation_id,
-    get_crm_provider,
+    get_helpdesk_provider,
     log_action
 )
 from ..core.database import get_db
 from ..core.logging import get_logger
 from ..core.exceptions import ValidationException, ProviderException
-from ..providers.base import CRMProvider
+from ..providers.base import HelpdeskProvider
 
 
 logger = get_logger(__name__)
@@ -43,27 +43,27 @@ router = APIRouter()
 
 
 @router.post(
-    "/create_contact",
-    response_model=ContactResponse,
+    "/create_ticket",
+    response_model=TicketResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Create a new CRM contact",
+    summary="Create a new helpdesk ticket",
     description="""
-    Create a new contact in the CRM system.
+    Create a new support ticket in the helpdesk system.
     
-    This endpoint creates a contact record with the provided information.
-    The contact will be created in the configured CRM provider (HubSpot, Salesforce, etc.).
+    This endpoint creates a ticket record with the provided information.
+    The ticket will be created in the configured helpdesk provider (Zendesk, etc.).
     
     **Example Request:**
     ```json
     {
-        "email": "john.doe@example.com",
-        "first_name": "John",
-        "last_name": "Doe",
-        "company": "Acme Corp",
-        "phone": "+1-555-0123",
+        "subject": "Unable to login to dashboard",
+        "description": "User reports seeing 'Invalid credentials' error.",
+        "priority": "high",
+        "requester_email": "customer@example.com",
+        "tags": ["login", "authentication"],
         "metadata": {
-            "source": "website",
-            "campaign": "spring-2025"
+            "source": "api",
+            "campaign": "support"
         }
     }
     ```
@@ -71,98 +71,109 @@ router = APIRouter()
     **Example Response:**
     ```json
     {
-        "id": "cont_abc123",
-        "email": "john.doe@example.com",
-        "first_name": "John",
-        "last_name": "Doe",
-        "company": "Acme Corp",
-        "phone": "+1-555-0123",
-        "provider": "hubspot",
+        "id": "tick_789",
+        "ticket_number": "#12345",
+        "subject": "Unable to login to dashboard",
+        "status": "open",
+        "priority": "high",
+        "provider": "zendesk",
         "provider_id": "12345",
         "created_at": "2025-10-31T05:00:00Z"
     }
     ```
     """,
-    tags=["CRM - Contacts"]
+    tags=["Helpdesk - Tickets"]
 )
-async def create_contact(
-    email: str,
-    first_name: str = None,
-    last_name: str = None,
-    company: str = None,
-    phone: str = None,
+async def create_ticket(
+    subject: str,
+    description: str,
+    priority: str = None,
+    requester_email: str = None,
+    tags: List[str] = None,
     metadata: Dict[str, Any] = None,
     tenant_id: Annotated[str, Depends(get_tenant_id)] = None,
     correlation_id: Annotated[str, Depends(get_correlation_id)] = None,
-    provider: CRMProvider = Depends(get_crm_provider),
+    provider: HelpdeskProvider = Depends(get_helpdesk_provider),
     db: AsyncSession = Depends(get_db)
-) -> ContactResponse:
+) -> TicketResponse:
     """
-    Create a new CRM contact.
+    Create a new helpdesk ticket.
     
     Args:
-        email: Contact email address (required)
-        first_name: Contact first name
-        last_name: Contact last name
-        company: Company name
-        phone: Phone number
+        subject: Ticket subject/title (required)
+        description: Ticket description/body (required)
+        priority: Ticket priority (urgent, high, normal, low)
+        requester_email: Email of person requesting support
+        tags: Tags to apply to ticket
         metadata: Additional metadata
         tenant_id: Tenant ID (from dependency)
         correlation_id: Correlation ID (from dependency)
+        provider: Helpdesk provider (from dependency)
         db: Database session (from dependency)
         
     Returns:
-        ContactResponse with created contact details
+        TicketResponse with created ticket details
     """
     start_time = datetime.utcnow()
     
     # Validate required fields
-    if not email:
+    if not subject:
         raise ValidationException(
-            message="Email is required",
-            field="email",
-            value=email
+            message="Subject is required",
+            field="subject",
+            value=subject
+        )
+    
+    if not description:
+        raise ValidationException(
+            message="Description is required",
+            field="description",
+            value=description
         )
     
     # Build request payload for logging
     request_payload = {
-        "email": email,
-        "first_name": first_name,
-        "last_name": last_name,
-        "company": company,
-        "phone": phone,
+        "subject": subject,
+        "description": description,
+        "priority": priority,
+        "requester_email": requester_email,
+        "tags": tags,
         "metadata": metadata
     }
     
     try:
-        # Call provider to create contact
+        # Call provider to create ticket
         result = await provider.execute_with_retry(
-            action="create_contact",
+            action="create_ticket",
             parameters={
-                "email": email,
-                "first_name": first_name,
-                "last_name": last_name,
-                "company": company,
-                "phone": phone,
+                "subject": subject,
+                "description": description,
+                "priority": priority,
+                "requester_email": requester_email,
+                "tags": tags,
                 "metadata": metadata
             }
         )
         
         # Build response from provider result
-        response = ContactResponse(
+        response = TicketResponse(
             id=result.get("id"),
-            email=result.get("email"),
-            first_name=result.get("first_name"),
-            last_name=result.get("last_name"),
-            company=result.get("company"),
-            phone=result.get("phone"),
-            title=result.get("title"),
+            ticket_number=result.get("ticket_number"),
+            subject=result.get("subject"),
+            description=result.get("description"),
+            status=result.get("status", "open"),
+            priority=result.get("priority"),
+            requester_email=result.get("requester_email"),
+            requester_name=result.get("requester_name"),
+            assignee_id=result.get("assignee_id"),
+            assignee_name=result.get("assignee_name"),
+            tags=result.get("tags"),
             provider=result.get("provider"),
             provider_id=result.get("provider_id"),
             created_at=result.get("created_at") or datetime.utcnow(),
             updated_at=result.get("updated_at"),
-            custom_fields=metadata,
-            url=result.get("url")
+            url=result.get("url"),
+            custom_fields=metadata
         )
         
         # Calculate execution time
@@ -171,7 +182,7 @@ async def create_contact(
         # Log successful action
         await log_action(
             tenant_id=tenant_id,
-            action_type="crm_create",
+            action_type="helpdesk_create",
             provider_name=provider.provider_name,
             request_payload=request_payload,
             response_data=response.model_dump(),
@@ -182,7 +193,7 @@ async def create_contact(
         )
         
         logger.info(
-            f"Contact created: {response.id}",
+            f"Ticket created: {response.id}",
             extra={
                 "tenant_id": tenant_id,
                 "correlation_id": correlation_id,
@@ -198,7 +209,7 @@ async def create_contact(
         # Log failed action
         await log_action(
             tenant_id=tenant_id,
-            action_type="crm_create",
+            action_type="helpdesk_create",
             provider_name=provider.provider_name,
             request_payload=request_payload,
             response_data=None,
@@ -210,36 +221,37 @@ async def create_contact(
         )
         
         logger.error(
-            f"Failed to create contact: {e}",
+            f"Failed to create ticket: {e}",
             exc_info=e,
             extra={"tenant_id": tenant_id, "correlation_id": correlation_id}
         )
         
         raise ProviderException(
             provider=provider.provider_name,
-            message=f"Failed to create contact: {str(e)}",
+            message=f"Failed to create ticket: {str(e)}",
             original_error=e
         )
 
 
 @router.post(
-    "/update_contact",
-    response_model=ContactResponse,
+    "/update_ticket",
+    response_model=TicketResponse,
     status_code=status.HTTP_200_OK,
-    summary="Update an existing CRM contact",
+    summary="Update an existing helpdesk ticket",
     description="""
-    Update an existing contact in the CRM system.
+    Update an existing ticket in the helpdesk system.
     
-    This endpoint updates the specified fields of an existing contact.
+    This endpoint updates the specified fields of an existing ticket.
     Only provided fields will be updated; others remain unchanged.
     
     **Example Request:**
     ```json
     {
-        "contact_id": "cont_abc123",
+        "ticket_id": "tick_789",
         "updates": {
-            "title": "Senior VP of Sales",
-            "phone": "+1-555-0199"
+            "status": "solved",
+            "priority": "low",
+            "assignee_id": "agent_001"
         },
         "metadata": {
             "updated_by": "agent-001"
@@ -247,39 +259,40 @@ async def create_contact(
     }
     ```
     """,
-    tags=["CRM - Contacts"]
+    tags=["Helpdesk - Tickets"]
 )
-async def update_contact(
-    contact_id: str,
+async def update_ticket(
+    ticket_id: str,
     updates: Dict[str, Any],
     metadata: Dict[str, Any] = None,
     tenant_id: Annotated[str, Depends(get_tenant_id)] = None,
     correlation_id: Annotated[str, Depends(get_correlation_id)] = None,
-    provider: CRMProvider = Depends(get_crm_provider),
+    provider: HelpdeskProvider = Depends(get_helpdesk_provider),
     db: AsyncSession = Depends(get_db)
-) -> ContactResponse:
+) -> TicketResponse:
     """
-    Update an existing CRM contact.
+    Update an existing helpdesk ticket.
     
     Args:
-        contact_id: ID of the contact to update
+        ticket_id: ID of the ticket to update
         updates: Dictionary of fields to update
         metadata: Additional metadata
         tenant_id: Tenant ID (from dependency)
         correlation_id: Correlation ID (from dependency)
+        provider: Helpdesk provider (from dependency)
         db: Database session (from dependency)
         
     Returns:
-        ContactResponse with updated contact details
+        TicketResponse with updated ticket details
     """
     start_time = datetime.utcnow()
     
     # Validate required fields
-    if not contact_id:
+    if not ticket_id:
         raise ValidationException(
-            message="Contact ID is required",
-            field="contact_id",
-            value=contact_id
+            message="Ticket ID is required",
+            field="ticket_id",
+            value=ticket_id
         )
     
     if not updates:
@@ -291,36 +304,40 @@ async def update_contact(
     
     # Build request payload
     request_payload = {
-        "contact_id": contact_id,
+        "ticket_id": ticket_id,
         "updates": updates,
         "metadata": metadata
     }
     
     try:
-        # Call provider to update contact
+        # Call provider to update ticket
         result = await provider.execute_with_retry(
-            action="update_contact",
+            action="update_ticket",
             parameters={
-                "contact_id": contact_id,
+                "ticket_id": ticket_id,
                 "updates": updates
             }
         )
         
         # Build response from provider result
-        response = ContactResponse(
+        response = TicketResponse(
             id=result.get("id"),
-            email=result.get("email"),
-            first_name=result.get("first_name"),
-            last_name=result.get("last_name"),
-            company=result.get("company"),
-            phone=result.get("phone"),
-            title=result.get("title"),
+            ticket_number=result.get("ticket_number"),
+            subject=result.get("subject"),
+            description=result.get("description"),
+            status=result.get("status"),
+            priority=result.get("priority"),
+            requester_email=result.get("requester_email"),
+            requester_name=result.get("requester_name"),
+            assignee_id=result.get("assignee_id"),
+            assignee_name=result.get("assignee_name"),
+            tags=result.get("tags"),
             provider=result.get("provider"),
             provider_id=result.get("provider_id"),
             created_at=result.get("created_at") or datetime.utcnow(),
             updated_at=result.get("updated_at") or datetime.utcnow(),
-            custom_fields=metadata,
-            url=result.get("url")
+            url=result.get("url"),
+            custom_fields=metadata
         )
         
         execution_time_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
@@ -328,7 +345,7 @@ async def update_contact(
         # Log successful action
         await log_action(
             tenant_id=tenant_id,
-            action_type="crm_update",
+            action_type="helpdesk_update",
             provider_name=provider.provider_name,
             request_payload=request_payload,
             response_data=response.model_dump(),
@@ -339,7 +356,7 @@ async def update_contact(
         )
         
         logger.info(
-            f"Contact updated: {response.id}",
+            f"Ticket updated: {response.id}",
             extra={
                 "tenant_id": tenant_id,
                 "correlation_id": correlation_id,
@@ -354,7 +371,7 @@ async def update_contact(
         
         await log_action(
             tenant_id=tenant_id,
-            action_type="crm_update",
+            action_type="helpdesk_update",
             provider_name=provider.provider_name,
             request_payload=request_payload,
             response_data=None,
@@ -366,67 +383,72 @@ async def update_contact(
         )
         
         logger.error(
-            f"Failed to update contact: {e}",
+            f"Failed to update ticket: {e}",
             exc_info=e,
             extra={"tenant_id": tenant_id, "correlation_id": correlation_id}
         )
         
         raise ProviderException(
             provider=provider.provider_name,
-            message=f"Failed to update contact: {str(e)}",
+            message=f"Failed to update ticket: {str(e)}",
             original_error=e
         )
 
 
 @router.post(
-    "/search_contacts",
-    response_model=SearchContactsResponse,
+    "/search_tickets",
+    response_model=SearchTicketsResponse,
     status_code=status.HTTP_200_OK,
-    summary="Search for CRM contacts",
+    summary="Search for helpdesk tickets",
     description="""
-    Search for contacts in the CRM system.
+    Search for tickets in the helpdesk system.
     
-    This endpoint searches for contacts matching the provided query.
-    Supports filtering by email, name, company, and other fields.
+    This endpoint searches for tickets matching the provided criteria.
+    Supports filtering by status, priority, assignee, and more.
     
     **Example Request:**
     ```json
     {
-        "query": "john doe acme",
-        "filters": {
-            "company": "Acme Corp"
-        },
+        "query": "login error",
+        "status": ["open", "pending"],
+        "priority": ["high", "urgent"],
+        "assignee": "agent_001",
         "limit": 10,
         "offset": 0
     }
     ```
     """,
-    tags=["CRM - Contacts"]
+    tags=["Helpdesk - Tickets"]
 )
-async def search_contacts(
+async def search_tickets(
     query: str = None,
-    filters: Dict[str, Any] = None,
+    status: List[str] = None,
+    priority: List[str] = None,
+    assignee: str = None,
     limit: int = 10,
     offset: int = 0,
     tenant_id: Annotated[str, Depends(get_tenant_id)] = None,
     correlation_id: Annotated[str, Depends(get_correlation_id)] = None,
-    provider: CRMProvider = Depends(get_crm_provider),
+    provider: HelpdeskProvider = Depends(get_helpdesk_provider),
     db: AsyncSession = Depends(get_db)
-) -> SearchContactsResponse:
+) -> SearchTicketsResponse:
     """
-    Search for CRM contacts.
+    Search for helpdesk tickets.
     
     Args:
         query: Search query string
-        filters: Additional filters to apply
+        status: Filter by ticket status
+        priority: Filter by priority levels
+        assignee: Filter by assignee ID
         limit: Maximum number of results to return
         offset: Number of results to skip
         tenant_id: Tenant ID (from dependency)
         correlation_id: Correlation ID (from dependency)
+        provider: Helpdesk provider (from dependency)
         db: Database session (from dependency)
         
     Returns:
-        SearchContactsResponse with matching contacts
+        SearchTicketsResponse with matching tickets
     """
     start_time = datetime.utcnow()
     
@@ -448,35 +470,43 @@ async def search_contacts(
     # Build request payload
     request_payload = {
         "query": query,
-        "filters": filters,
+        "status": status,
+        "priority": priority,
+        "assignee": assignee,
         "limit": limit,
         "offset": offset
     }
     
     try:
-        # Call provider to search contacts
+        # Call provider to search tickets
         result = await provider.execute_with_retry(
-            action="search_contacts",
+            action="search_tickets",
             parameters={
                 "query": query,
-                "filters": filters,
+                "status": status,
+                "priority": priority,
+                "assignee": assignee,
                 "limit": limit,
                 "offset": offset
             }
         )
         
-        # Convert provider results to ContactSearchMatch objects
+        # Convert provider results to TicketSearchMatch objects
         matches = []
         for match_data in result.get("matches", []):
-            match = ContactSearchMatch(
+            match = TicketSearchMatch(
                 id=match_data.get("id"),
-                email=match_data.get("email"),
-                first_name=match_data.get("first_name"),
-                last_name=match_data.get("last_name"),
-                company=match_data.get("company"),
-                title=match_data.get("title"),
-                phone=match_data.get("phone"),
-                score=match_data.get("score", 1.0),
+                ticket_number=match_data.get("ticket_number"),
+                subject=match_data.get("subject"),
+                status=match_data.get("status"),
+                priority=match_data.get("priority"),
+                requester_email=match_data.get("requester_email") or "unknown@example.com",
+                requester_name=match_data.get("requester_name"),
+                assignee_id=match_data.get("assignee_id"),
+                assignee_name=match_data.get("assignee_name"),
+                tags=match_data.get("tags"),
+                created_at=match_data.get("created_at") or datetime.utcnow(),
+                updated_at=match_data.get("updated_at"),
                 url=match_data.get("url")
             )
             matches.append(match)
@@ -484,8 +514,8 @@ async def search_contacts(
         # Build pagination from provider response
         pagination_data = result.get("pagination", {})
         total_items = pagination_data.get("total_items", len(matches))
-        page = (offset // limit) + 1
-        total_pages = (total_items + limit - 1) // limit if total_items > 0 else 1
+        page = (offset // limit) + 1 if limit > 0 else 1
+        total_pages = (total_items + limit - 1) // limit if total_items > 0 and limit > 0 else 1
         
         pagination = PaginationResponse(
             page=page,
@@ -497,7 +527,7 @@ async def search_contacts(
             next_cursor=None
         )
         
-        response = SearchContactsResponse(
+        response = SearchTicketsResponse(
             matches=matches,
             pagination=pagination
         )
@@ -507,7 +537,7 @@ async def search_contacts(
         # Log successful action
         await log_action(
             tenant_id=tenant_id,
-            action_type="crm_search",
+            action_type="helpdesk_search",
             provider_name=provider.provider_name,
             request_payload=request_payload,
             response_data={"result_count": len(matches)},
@@ -518,7 +548,7 @@ async def search_contacts(
         )
         
         logger.info(
-            f"Contact search completed: {len(matches)} results",
+            f"Ticket search completed: {len(matches)} results",
             extra={
                 "tenant_id": tenant_id,
                 "correlation_id": correlation_id,
@@ -534,7 +564,7 @@ async def search_contacts(
         
         await log_action(
             tenant_id=tenant_id,
-            action_type="crm_search",
+            action_type="helpdesk_search",
             provider_name=provider.provider_name,
             request_payload=request_payload,
             response_data=None,
@@ -546,110 +576,113 @@ async def search_contacts(
         )
         
         logger.error(
-            f"Failed to search contacts: {e}",
+            f"Failed to search tickets: {e}",
             exc_info=e,
             extra={"tenant_id": tenant_id, "correlation_id": correlation_id}
         )
         
         raise ProviderException(
             provider=provider.provider_name,
-            message=f"Failed to search contacts: {str(e)}",
+            message=f"Failed to search tickets: {str(e)}",
             original_error=e
         )
 
 
 @router.post(
-    "/add_note",
-    response_model=NoteResponse,
+    "/add_comment",
+    response_model=CommentResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Add a note to a CRM contact",
+    summary="Add a comment to a helpdesk ticket",
     description="""
-    Add a note or activity to a CRM contact.
+    Add a comment or reply to a helpdesk ticket.
     
-    This endpoint creates a note associated with the specified contact.
-    Notes can be used to track calls, meetings, emails, or other interactions.
+    This endpoint creates a comment associated with the specified ticket.
+    Comments can be public (visible to requester) or private (internal notes).
     
     **Example Request:**
     ```json
     {
-        "contact_id": "cont_abc123",
-        "note_text": "Initial qualification call completed. Customer is interested in enterprise plan.",
-        "note_type": "call_note",
+        "ticket_id": "tick_789",
+        "comment_text": "I've reviewed the logs and identified the issue.",
+        "is_public": false,
         "metadata": {
-            "call_duration": 1800,
-            "outcome": "qualified"
+            "author": "agent_001"
         }
     }
     ```
     """,
-    tags=["CRM - Notes"]
+    tags=["Helpdesk - Comments"]
 )
-async def add_note(
-    contact_id: str,
-    note_text: str,
-    note_type: str = "note",
+async def add_comment(
+    ticket_id: str,
+    comment_text: str,
+    is_public: bool = True,
     metadata: Dict[str, Any] = None,
     tenant_id: Annotated[str, Depends(get_tenant_id)] = None,
     correlation_id: Annotated[str, Depends(get_correlation_id)] = None,
-    provider: CRMProvider = Depends(get_crm_provider),
+    provider: HelpdeskProvider = Depends(get_helpdesk_provider),
     db: AsyncSession = Depends(get_db)
-) -> NoteResponse:
+) -> CommentResponse:
     """
-    Add a note to a CRM contact.
+    Add a comment to a helpdesk ticket.
     
     Args:
-        contact_id: ID of the contact to add note to
-        note_text: Content of the note
-        note_type: Type of note (e.g., 'call_note', 'email', 'meeting')
+        ticket_id: ID of the ticket to add comment to
+        comment_text: Content of the comment
+        is_public: Whether comment is visible to requester
         metadata: Additional metadata
         tenant_id: Tenant ID (from dependency)
         correlation_id: Correlation ID (from dependency)
+        provider: Helpdesk provider (from dependency)
         db: Database session (from dependency)
         
     Returns:
-        NoteResponse with created note details
+        CommentResponse with created comment details
     """
     start_time = datetime.utcnow()
     
     # Validate required fields
-    if not contact_id:
+    if not ticket_id:
         raise ValidationException(
-            message="Contact ID is required",
-            field="contact_id",
-            value=contact_id
+            message="Ticket ID is required",
+            field="ticket_id",
+            value=ticket_id
         )
     
-    if not note_text:
+    if not comment_text:
         raise ValidationException(
-            message="Note text is required",
-            field="note_text",
-            value=note_text
+            message="Comment text is required",
+            field="comment_text",
+            value=comment_text
         )
     
     # Build request payload
     request_payload = {
-        "contact_id": contact_id,
-        "note_text": note_text,
-        "note_type": note_type,
+        "ticket_id": ticket_id,
+        "comment_text": comment_text,
+        "is_public": is_public,
         "metadata": metadata
     }
     
     try:
-        # Call provider to add note
+        # Call provider to add comment
         result = await provider.execute_with_retry(
-            action="add_note",
+            action="add_comment",
             parameters={
-                "contact_id": contact_id,
-                "note_text": note_text,
-                "note_type": note_type
+                "ticket_id": ticket_id,
+                "comment_text": comment_text,
+                "is_public": is_public,
+                "metadata": metadata
             }
         )
         
-        response = NoteResponse(
+        response = CommentResponse(
             id=result.get("id"),
-            contact_id=result.get("contact_id"),
-            content=result.get("content"),
-            type=result.get("type", note_type),
+            ticket_id=result.get("ticket_id"),
+            body=result.get("body") or comment_text,
+            is_public=result.get("is_public", is_public),
+            author_id=result.get("author_id"),
+            author_name=result.get("author_name"),
             provider=result.get("provider"),
             provider_id=result.get("provider_id"),
             created_at=result.get("created_at") or datetime.utcnow()
@@ -660,18 +693,18 @@ async def add_note(
         # Log successful action
         await log_action(
             tenant_id=tenant_id,
-            action_type="crm_create",
+            action_type="helpdesk_create",
             provider_name=provider.provider_name,
             request_payload=request_payload,
             response_data=response.model_dump(),
             status="success",
             execution_time_ms=execution_time_ms,
-            metadata={"correlation_id": correlation_id, "resource_type": "note"},
+            metadata={"correlation_id": correlation_id, "resource_type": "comment"},
             db=db
         )
         
         logger.info(
-            f"Note added: {response.id} to contact {contact_id}",
+            f"Comment added: {response.id} to ticket {ticket_id}",
             extra={
                 "tenant_id": tenant_id,
                 "correlation_id": correlation_id,
@@ -686,25 +719,25 @@ async def add_note(
         
         await log_action(
             tenant_id=tenant_id,
-            action_type="crm_create",
+            action_type="helpdesk_create",
             provider_name=provider.provider_name,
             request_payload=request_payload,
             response_data=None,
             status="failure",
             execution_time_ms=execution_time_ms,
             error_message=str(e),
-            metadata={"correlation_id": correlation_id, "resource_type": "note"},
+            metadata={"correlation_id": correlation_id, "resource_type": "comment"},
             db=db
         )
         
         logger.error(
-            f"Failed to add note: {e}",
+            f"Failed to add comment: {e}",
             exc_info=e,
             extra={"tenant_id": tenant_id, "correlation_id": correlation_id}
         )
         
         raise ProviderException(
             provider=provider.provider_name,
-            message=f"Failed to add note: {str(e)}",
+            message=f"Failed to add comment: {str(e)}",
             original_error=e
         )

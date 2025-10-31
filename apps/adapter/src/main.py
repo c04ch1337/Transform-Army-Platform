@@ -19,8 +19,20 @@ from .core.middleware import (
     RequestTimingMiddleware,
     ErrorHandlingMiddleware,
     AuditLoggingMiddleware,
-    RateLimitMiddleware
+    RateLimitMiddleware,
+    TenantMiddleware
 )
+from .core.exceptions import (
+    AdapterException,
+    adapter_exception_handler,
+    generic_exception_handler
+)
+
+# Import provider modules to register them
+# This ensures providers are registered with the factory at startup
+from .providers import crm  # noqa: F401
+from .providers import helpdesk  # noqa: F401
+from .providers import calendar  # noqa: F401
 
 
 # Setup logging
@@ -88,11 +100,18 @@ app.add_middleware(
 
 
 # Add custom middleware (order matters - they execute in reverse order)
+# TenantMiddleware should be one of the first to run (added last)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(AuditLoggingMiddleware)
 app.add_middleware(ErrorHandlingMiddleware)
 app.add_middleware(RequestTimingMiddleware)
+app.add_middleware(TenantMiddleware)
 app.add_middleware(CorrelationIdMiddleware)
+
+
+# Register custom exception handlers
+app.add_exception_handler(AdapterException, adapter_exception_handler)
+app.add_exception_handler(Exception, generic_exception_handler)
 
 
 # Exception handlers

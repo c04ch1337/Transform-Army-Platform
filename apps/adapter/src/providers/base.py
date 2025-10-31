@@ -368,3 +368,359 @@ class ProviderPlugin(ABC):
             elif hasattr(self._client, 'close'):
                 self._client.close()
             self._client = None
+
+
+class CRMProvider(ProviderPlugin):
+    """
+    Abstract base class for CRM providers.
+    
+    Defines the interface for CRM operations like contacts, deals, notes, etc.
+    """
+    
+    @abstractmethod
+    async def create_contact(
+        self,
+        email: str,
+        first_name: Optional[str] = None,
+        last_name: Optional[str] = None,
+        company: Optional[str] = None,
+        phone: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a new contact in the CRM.
+        
+        Args:
+            email: Contact email address (required)
+            first_name: Contact first name
+            last_name: Contact last name
+            company: Company name
+            phone: Phone number
+            metadata: Additional metadata/custom fields
+            
+        Returns:
+            Dictionary with contact data
+        """
+        pass
+    
+    @abstractmethod
+    async def update_contact(
+        self,
+        contact_id: str,
+        updates: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Update an existing contact in the CRM.
+        
+        Args:
+            contact_id: ID of the contact to update
+            updates: Dictionary of fields to update
+            
+        Returns:
+            Dictionary with updated contact data
+        """
+        pass
+    
+    @abstractmethod
+    async def search_contacts(
+        self,
+        query: Optional[str] = None,
+        filters: Optional[Dict[str, Any]] = None,
+        limit: int = 10,
+        offset: int = 0
+    ) -> Dict[str, Any]:
+        """
+        Search for contacts in the CRM.
+        
+        Args:
+            query: Search query string
+            filters: Additional filters to apply
+            limit: Maximum number of results
+            offset: Number of results to skip
+            
+        Returns:
+            Dictionary with matches and pagination info
+        """
+        pass
+    
+    @abstractmethod
+    async def add_note(
+        self,
+        contact_id: str,
+        note_text: str,
+        note_type: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Add a note to a contact in the CRM.
+        
+        Args:
+            contact_id: ID of the contact
+            note_text: Content of the note
+            note_type: Type of note (e.g., 'call', 'email', 'meeting')
+            
+        Returns:
+            Dictionary with note data
+        """
+        pass
+    
+    async def create_deal(
+        self,
+        deal_name: str,
+        amount: Optional[float] = None,
+        stage: Optional[str] = None,
+        associated_contacts: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a new deal in the CRM.
+        
+        Args:
+            deal_name: Name of the deal
+            amount: Deal amount
+            stage: Deal stage
+            associated_contacts: List of contact IDs to associate
+            
+        Returns:
+            Dictionary with deal data
+            
+        Note:
+            This is an optional method. Providers that don't support deals
+            should raise NotImplementedError.
+        """
+        raise NotImplementedError(f"{self.provider_name} does not support deal creation")
+
+
+class HelpdeskProvider(ProviderPlugin):
+    """
+    Abstract base class for helpdesk providers.
+    
+    Defines the interface for helpdesk operations like tickets, comments, etc.
+    """
+    
+    @abstractmethod
+    async def create_ticket(
+        self,
+        subject: str,
+        description: str,
+        priority: Optional[str] = None,
+        requester_email: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a new ticket in the helpdesk system.
+        
+        Args:
+            subject: Ticket subject/title
+            description: Ticket description/body
+            priority: Ticket priority (urgent, high, normal, low)
+            requester_email: Email of person requesting support
+            tags: Tags to apply to ticket
+            metadata: Additional metadata/custom fields
+            
+        Returns:
+            Dictionary with ticket data
+        """
+        pass
+    
+    @abstractmethod
+    async def update_ticket(
+        self,
+        ticket_id: str,
+        updates: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Update an existing ticket in the helpdesk system.
+        
+        Args:
+            ticket_id: ID of the ticket to update
+            updates: Dictionary of fields to update
+            
+        Returns:
+            Dictionary with updated ticket data
+        """
+        pass
+    
+    @abstractmethod
+    async def search_tickets(
+        self,
+        query: Optional[str] = None,
+        status: Optional[List[str]] = None,
+        priority: Optional[List[str]] = None,
+        assignee: Optional[str] = None,
+        limit: int = 10,
+        offset: int = 0
+    ) -> Dict[str, Any]:
+        """
+        Search for tickets in the helpdesk system.
+        
+        Args:
+            query: Search query string
+            status: Filter by ticket status
+            priority: Filter by priority levels
+            assignee: Filter by assignee ID
+            limit: Maximum number of results
+            offset: Number of results to skip
+            
+        Returns:
+            Dictionary with matches and pagination info
+        """
+        pass
+    
+    @abstractmethod
+    async def add_comment(
+        self,
+        ticket_id: str,
+        comment_text: str,
+        is_public: bool = True,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Add a comment to a ticket in the helpdesk system.
+        
+        Args:
+            ticket_id: ID of the ticket
+            comment_text: Content of the comment
+            is_public: Whether comment is visible to requester
+            metadata: Additional metadata
+            
+        Returns:
+            Dictionary with comment data
+        """
+        pass
+    
+    async def get_ticket(
+        self,
+        ticket_id: str
+    ) -> Dict[str, Any]:
+        """
+        Get a ticket by ID from the helpdesk system.
+        
+        Args:
+            ticket_id: ID of the ticket
+            
+        Returns:
+            Dictionary with ticket data
+            
+        Note:
+            This is an optional method. Providers that don't support
+            direct ticket retrieval should raise NotImplementedError.
+        """
+        raise NotImplementedError(f"{self.provider_name} does not support get_ticket")
+
+
+class CalendarProvider(ProviderPlugin):
+    """
+    Abstract base class for calendar providers.
+    
+    Defines the interface for calendar operations like events, availability checks, etc.
+    """
+    
+    @abstractmethod
+    async def check_availability(
+        self,
+        calendar_id: str,
+        start_time: str,
+        end_time: str,
+        duration_minutes: int
+    ) -> Dict[str, Any]:
+        """
+        Check availability and return free time slots.
+        
+        Args:
+            calendar_id: Calendar identifier to check
+            start_time: Start of time range (ISO 8601)
+            end_time: End of time range (ISO 8601)
+            duration_minutes: Duration of meeting slot in minutes
+            
+        Returns:
+            Dictionary with available time slots
+        """
+        pass
+    
+    @abstractmethod
+    async def create_event(
+        self,
+        calendar_id: str,
+        summary: str,
+        description: Optional[str] = None,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+        attendees: Optional[List[str]] = None,
+        location: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Create a new calendar event.
+        
+        Args:
+            calendar_id: Calendar identifier
+            summary: Event title/summary
+            description: Event description
+            start_time: Event start time (ISO 8601)
+            end_time: Event end time (ISO 8601)
+            attendees: List of attendee email addresses
+            location: Event location
+            metadata: Additional metadata (timezone, conference data, etc.)
+            
+        Returns:
+            Dictionary with event data
+        """
+        pass
+    
+    @abstractmethod
+    async def update_event(
+        self,
+        event_id: str,
+        updates: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Update an existing calendar event.
+        
+        Args:
+            event_id: ID of the event to update
+            updates: Dictionary of fields to update
+            
+        Returns:
+            Dictionary with updated event data
+        """
+        pass
+    
+    @abstractmethod
+    async def cancel_event(
+        self,
+        event_id: str,
+        cancellation_message: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Cancel a calendar event.
+        
+        Args:
+            event_id: ID of the event to cancel
+            cancellation_message: Optional message to send to attendees
+            
+        Returns:
+            Dictionary with cancellation confirmation
+        """
+        pass
+    
+    @abstractmethod
+    async def list_events(
+        self,
+        calendar_id: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        max_results: int = 10
+    ) -> Dict[str, Any]:
+        """
+        List events in a calendar within a date range.
+        
+        Args:
+            calendar_id: Calendar identifier
+            start_date: Start date filter (ISO 8601)
+            end_date: End date filter (ISO 8601)
+            max_results: Maximum number of events to return
+            
+        Returns:
+            Dictionary with events and pagination info
+        """
+        pass

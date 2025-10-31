@@ -579,3 +579,353 @@ class ListEventsResponse(BaseModel):
         default=None,
         description="Pagination metadata"
     )
+
+
+# API-specific request/response models for calendar endpoints
+
+class CheckAvailabilityApiRequest(BaseModel):
+    """
+    Simplified API request to check calendar availability.
+    Used by POST /api/v1/calendar/check_availability endpoint.
+    """
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "calendar_id": "primary",
+                "start_time": "2024-01-01T09:00:00-05:00",
+                "end_time": "2024-01-01T17:00:00-05:00",
+                "duration_minutes": 30
+            }
+        }
+    )
+    
+    calendar_id: str = Field(
+        default="primary",
+        description="Calendar ID to check availability"
+    )
+    start_time: str = Field(
+        description="Start of time range (ISO 8601 with timezone)"
+    )
+    end_time: str = Field(
+        description="End of time range (ISO 8601 with timezone)"
+    )
+    duration_minutes: int = Field(
+        ge=1,
+        description="Duration of meeting slot in minutes"
+    )
+
+
+class TimeSlot(BaseModel):
+    """An available time slot."""
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "start_time": "2024-01-01T10:00:00-05:00",
+                "end_time": "2024-01-01T10:30:00-05:00"
+            }
+        }
+    )
+    
+    start_time: str = Field(description="Slot start time (ISO 8601)")
+    end_time: str = Field(description="Slot end time (ISO 8601)")
+
+
+class AvailabilityApiResponse(BaseModel):
+    """
+    API response from availability check.
+    Used by POST /api/v1/calendar/check_availability endpoint.
+    """
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "available_slots": [
+                    {
+                        "start_time": "2024-01-01T10:00:00-05:00",
+                        "end_time": "2024-01-01T10:30:00-05:00"
+                    },
+                    {
+                        "start_time": "2024-01-01T14:00:00-05:00",
+                        "end_time": "2024-01-01T14:30:00-05:00"
+                    }
+                ],
+                "calendar_id": "primary",
+                "checked_at": "2024-01-01T08:00:00Z"
+            }
+        }
+    )
+    
+    available_slots: List[TimeSlot] = Field(
+        description="List of available time slots"
+    )
+    calendar_id: str = Field(
+        description="Calendar that was checked"
+    )
+    checked_at: str = Field(
+        description="Timestamp when availability was checked"
+    )
+
+
+class CreateEventApiRequest(BaseModel):
+    """
+    API request to create a new calendar event.
+    Used by POST /api/v1/calendar/create_event endpoint.
+    """
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "calendar_id": "primary",
+                "summary": "Team Meeting",
+                "description": "Quarterly planning session",
+                "start_time": "2024-01-01T10:00:00-05:00",
+                "end_time": "2024-01-01T11:00:00-05:00",
+                "attendees": ["john@example.com", "jane@example.com"],
+                "location": "Conference Room A",
+                "metadata": {
+                    "add_conference_data": True,
+                    "send_notifications": True
+                }
+            }
+        }
+    )
+    
+    calendar_id: str = Field(
+        default="primary",
+        description="Calendar ID where event will be created"
+    )
+    summary: str = Field(description="Event title/summary")
+    description: Optional[str] = Field(
+        default=None,
+        description="Event description"
+    )
+    start_time: str = Field(
+        description="Event start time (ISO 8601 with timezone)"
+    )
+    end_time: str = Field(
+        description="Event end time (ISO 8601 with timezone)"
+    )
+    attendees: Optional[List[str]] = Field(
+        default=None,
+        description="List of attendee email addresses"
+    )
+    location: Optional[str] = Field(
+        default=None,
+        description="Event location or description"
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Additional metadata (timezone, conference data, etc.)"
+    )
+
+
+class UpdateEventApiRequest(BaseModel):
+    """
+    API request to update an existing calendar event.
+    Used by POST /api/v1/calendar/update_event endpoint.
+    """
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "event_id": "evt_abc123",
+                "updates": {
+                    "summary": "Updated Meeting Title",
+                    "start_time": "2024-01-01T14:00:00-05:00",
+                    "end_time": "2024-01-01T15:00:00-05:00"
+                }
+            }
+        }
+    )
+    
+    event_id: str = Field(description="ID of the event to update")
+    updates: Dict[str, Any] = Field(
+        description="Fields to update (partial update)"
+    )
+
+
+class CancelEventApiRequest(BaseModel):
+    """
+    API request to cancel a calendar event.
+    Used by POST /api/v1/calendar/cancel_event endpoint.
+    """
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "event_id": "evt_abc123",
+                "cancellation_message": "Meeting cancelled due to conflict"
+            }
+        }
+    )
+    
+    event_id: str = Field(description="ID of the event to cancel")
+    cancellation_message: Optional[str] = Field(
+        default=None,
+        description="Optional message to send to attendees"
+    )
+
+
+class ListEventsApiRequest(BaseModel):
+    """
+    API request to list calendar events.
+    Used by POST /api/v1/calendar/list_events endpoint.
+    """
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "calendar_id": "primary",
+                "start_date": "2024-01-01T00:00:00Z",
+                "end_date": "2024-01-31T23:59:59Z",
+                "max_results": 10
+            }
+        }
+    )
+    
+    calendar_id: str = Field(
+        default="primary",
+        description="Calendar ID to list events from"
+    )
+    start_date: Optional[str] = Field(
+        default=None,
+        description="Start date filter (ISO 8601)"
+    )
+    end_date: Optional[str] = Field(
+        default=None,
+        description="End date filter (ISO 8601)"
+    )
+    max_results: int = Field(
+        default=10,
+        ge=1,
+        le=100,
+        description="Maximum number of events to return"
+    )
+
+
+class EventApiResponse(BaseModel):
+    """
+    API response for calendar event operations.
+    Used by create_event and update_event endpoints.
+    """
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "evt_abc123",
+                "provider": "google",
+                "provider_id": "abc123xyz",
+                "calendar_id": "primary",
+                "summary": "Team Meeting",
+                "description": "Quarterly planning",
+                "start_time": "2024-01-01T10:00:00-05:00",
+                "end_time": "2024-01-01T11:00:00-05:00",
+                "attendees": ["john@example.com", "jane@example.com"],
+                "location": "Conference Room A",
+                "meeting_url": "https://meet.google.com/abc-defg-hij",
+                "status": "confirmed",
+                "created_at": "2024-01-01T08:00:00Z",
+                "updated_at": "2024-01-01T08:00:00Z",
+                "url": "https://calendar.google.com/event?eid=abc123"
+            }
+        }
+    )
+    
+    id: str = Field(description="Unique event identifier")
+    provider: str = Field(description="Calendar provider name")
+    provider_id: str = Field(description="Provider's event ID")
+    calendar_id: str = Field(description="Calendar ID")
+    summary: str = Field(description="Event title/summary")
+    description: Optional[str] = Field(
+        default=None,
+        description="Event description"
+    )
+    start_time: str = Field(description="Event start time")
+    end_time: str = Field(description="Event end time")
+    attendees: Optional[List[str]] = Field(
+        default=None,
+        description="List of attendee email addresses"
+    )
+    location: Optional[str] = Field(
+        default=None,
+        description="Event location"
+    )
+    meeting_url: Optional[str] = Field(
+        default=None,
+        description="URL to join online meeting"
+    )
+    status: Optional[str] = Field(
+        default=None,
+        description="Event status"
+    )
+    created_at: Optional[str] = Field(
+        default=None,
+        description="Event creation timestamp"
+    )
+    updated_at: Optional[str] = Field(
+        default=None,
+        description="Last update timestamp"
+    )
+    url: Optional[str] = Field(
+        default=None,
+        description="URL to view event in calendar"
+    )
+
+
+class ListEventsApiResponse(BaseModel):
+    """
+    API response from list events operation.
+    Used by POST /api/v1/calendar/list_events endpoint.
+    """
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "events": [
+                    {
+                        "id": "evt_abc123",
+                        "summary": "Team Meeting",
+                        "start_time": "2024-01-01T10:00:00-05:00",
+                        "end_time": "2024-01-01T11:00:00-05:00"
+                    }
+                ],
+                "calendar_id": "primary",
+                "total_count": 1
+            }
+        }
+    )
+    
+    events: List[Dict[str, Any]] = Field(
+        description="List of events"
+    )
+    calendar_id: str = Field(
+        description="Calendar that was queried"
+    )
+    total_count: int = Field(
+        description="Total number of events returned"
+    )
+
+
+class CancelEventApiResponse(BaseModel):
+    """
+    API response from cancel event operation.
+    Used by POST /api/v1/calendar/cancel_event endpoint.
+    """
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "event_id": "evt_abc123",
+                "status": "cancelled",
+                "message": "Event cancelled successfully",
+                "cancelled_at": "2024-01-01T08:00:00Z"
+            }
+        }
+    )
+    
+    event_id: str = Field(description="ID of cancelled event")
+    status: str = Field(description="Cancellation status")
+    message: str = Field(description="Confirmation message")
+    cancelled_at: str = Field(description="Cancellation timestamp")
