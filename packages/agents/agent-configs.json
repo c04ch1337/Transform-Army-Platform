@@ -1,0 +1,318 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2025-10-31",
+  "agents": [
+    {
+      "agent_id": "bdr-concierge",
+      "name": "BDR Concierge",
+      "type": "bdr-concierge",
+      "version": "1.0.0",
+      "status": "active",
+      "description": "Inbound lead qualification and meeting coordination",
+      "role": {
+        "primary": "sales",
+        "squad": "sales-squad",
+        "phase": "ground-forces"
+      },
+      "model": {
+        "primary": "gpt-4",
+        "fallback": "gpt-3.5-turbo",
+        "temperature": 0.3,
+        "max_tokens": 2000
+      },
+      "tools": [
+        "crm.contacts.search",
+        "crm.contacts.create",
+        "crm.contacts.update",
+        "crm.notes.add",
+        "calendar.availability.find",
+        "calendar.events.create",
+        "email.send",
+        "web.search"
+      ],
+      "permissions": {
+        "crm": ["read", "write"],
+        "calendar": ["read", "write"],
+        "email": ["send"]
+      },
+      "thresholds": {
+        "qualification_score": 70,
+        "confidence_min": 0.7,
+        "escalation_deal_value": 50000
+      },
+      "sla": {
+        "response_time_minutes": 5,
+        "processing_time_minutes": 10
+      },
+      "cost_budget": {
+        "per_operation": 0.50,
+        "daily_max": 50.00
+      }
+    },
+    {
+      "agent_id": "support-concierge",
+      "name": "Support Concierge",
+      "type": "support-concierge",
+      "version": "1.0.0",
+      "status": "active",
+      "description": "Tier-0/1 support triage and deflection",
+      "role": {
+        "primary": "support",
+        "squad": "support-squad",
+        "phase": "ground-forces"
+      },
+      "model": {
+        "primary": "gpt-4",
+        "fallback": "gpt-3.5-turbo",
+        "temperature": 0.2,
+        "max_tokens": 1500
+      },
+      "tools": [
+        "helpdesk.tickets.read",
+        "helpdesk.tickets.update",
+        "helpdesk.comments.add",
+        "knowledge.search",
+        "crm.contacts.search",
+        "slack.notify"
+      ],
+      "permissions": {
+        "helpdesk": ["read", "write"],
+        "knowledge": ["read"],
+        "crm": ["read"],
+        "slack": ["send"]
+      },
+      "thresholds": {
+        "kb_confidence_min": 0.80,
+        "deflection_confidence": 0.75,
+        "escalation_confidence": 0.70
+      },
+      "sla": {
+        "p1_response_minutes": 15,
+        "p2_response_minutes": 120,
+        "p3_response_hours": 8,
+        "p4_response_hours": 24
+      },
+      "cost_budget": {
+        "per_ticket": 0.30,
+        "daily_max": 40.00
+      }
+    },
+    {
+      "agent_id": "research-recon",
+      "name": "Research Recon",
+      "type": "research-recon",
+      "version": "1.0.0",
+      "status": "active",
+      "description": "Competitive intelligence and market research",
+      "role": {
+        "primary": "research",
+        "squad": "sales-squad",
+        "phase": "ground-forces"
+      },
+      "model": {
+        "primary": "gpt-4",
+        "fallback": "gpt-3.5-turbo",
+        "temperature": 0.3,
+        "max_tokens": 4000
+      },
+      "tools": [
+        "web.search",
+        "web.scrape",
+        "data.company.lookup",
+        "crm.companies.search",
+        "crm.companies.update",
+        "email.send"
+      ],
+      "permissions": {
+        "web": ["search", "scrape"],
+        "crm": ["read", "write"],
+        "data": ["lookup"]
+      },
+      "thresholds": {
+        "source_credibility_min": "tier2",
+        "confidence_min": 0.75,
+        "research_time_max_hours": 4
+      },
+      "cost_budget": {
+        "per_research": 5.00,
+        "daily_max": 30.00
+      }
+    },
+    {
+      "agent_id": "ops-sapper",
+      "name": "Ops Sapper",
+      "type": "ops-sapper",
+      "version": "1.0.0",
+      "status": "active",
+      "description": "Operational monitoring and SLA tracking",
+      "role": {
+        "primary": "operations",
+        "squad": "ops-squad",
+        "phase": "ground-forces"
+      },
+      "model": {
+        "primary": "gpt-3.5-turbo",
+        "fallback": "gpt-3.5-turbo",
+        "temperature": 0.1,
+        "max_tokens": 1000
+      },
+      "tools": [
+        "analytics.query",
+        "helpdesk.tickets.search",
+        "crm.deals.search",
+        "slack.notify",
+        "email.send"
+      ],
+      "permissions": {
+        "analytics": ["read"],
+        "helpdesk": ["read"],
+        "crm": ["read"],
+        "slack": ["send"],
+        "email": ["send"]
+      },
+      "thresholds": {
+        "sla_alert_minutes_before": 15,
+        "data_quality_min": 0.90,
+        "false_positive_max": 0.05
+      },
+      "monitoring": {
+        "check_frequency_minutes": 60,
+        "alert_channels": ["slack", "email"]
+      },
+      "cost_budget": {
+        "per_check": 0.10,
+        "daily_max": 10.00
+      }
+    },
+    {
+      "agent_id": "knowledge-librarian",
+      "name": "Knowledge Librarian",
+      "type": "knowledge-librarian",
+      "version": "1.0.0",
+      "status": "active",
+      "description": "Knowledge base management and maintenance",
+      "role": {
+        "primary": "knowledge",
+        "squad": "support-squad",
+        "phase": "ground-forces"
+      },
+      "model": {
+        "primary": "gpt-4",
+        "fallback": "gpt-3.5-turbo",
+        "temperature": 0.3,
+        "max_tokens": 4000
+      },
+      "tools": [
+        "knowledge.articles.create",
+        "knowledge.articles.update",
+        "knowledge.articles.search",
+        "document.parse",
+        "helpdesk.tickets.search",
+        "analytics.searches"
+      ],
+      "permissions": {
+        "knowledge": ["read", "write"],
+        "documents": ["parse"],
+        "helpdesk": ["read"],
+        "analytics": ["read"]
+      },
+      "thresholds": {
+        "freshness_days_max": 90,
+        "quality_score_min": 0.90,
+        "gap_priority_min": 60
+      },
+      "cost_budget": {
+        "per_article": 2.00,
+        "daily_max": 20.00
+      }
+    },
+    {
+      "agent_id": "qa-auditor",
+      "name": "QA Auditor",
+      "type": "qa-auditor",
+      "version": "1.0.0",
+      "status": "active",
+      "description": "Quality assurance and validation",
+      "role": {
+        "primary": "quality",
+        "squad": "all-squads",
+        "phase": "ground-forces"
+      },
+      "model": {
+        "primary": "gpt-4",
+        "fallback": "gpt-3.5-turbo",
+        "temperature": 0.1,
+        "max_tokens": 1000
+      },
+      "tools": [
+        "analytics.query",
+        "slack.notify"
+      ],
+      "permissions": {
+        "analytics": ["read"],
+        "all_agent_outputs": ["read"],
+        "slack": ["send"]
+      },
+      "thresholds": {
+        "quality_score_min": 7.0,
+        "block_threshold": 6.0,
+        "excellent_threshold": 9.0,
+        "sampling_rate": {
+          "high_risk": 1.0,
+          "medium_risk": 0.2,
+          "low_risk": 0.05
+        }
+      },
+      "cost_budget": {
+        "per_evaluation": 0.05,
+        "daily_max": 15.00
+      }
+    }
+  ],
+  "squads": [
+    {
+      "squad_id": "sales-squad",
+      "name": "Sales Squad",
+      "description": "Lead-to-opportunity workflow",
+      "agents": ["bdr-concierge", "research-recon", "qa-auditor"],
+      "lead_agent": "bdr-concierge",
+      "workflows": ["lead-qualification", "company-enrichment", "opportunity-creation"]
+    },
+    {
+      "squad_id": "support-squad",
+      "name": "Support Squad",
+      "description": "Ticket-to-resolution workflow",
+      "agents": ["support-concierge", "knowledge-librarian", "qa-auditor"],
+      "lead_agent": "support-concierge",
+      "workflows": ["ticket-triage", "solution-lookup", "escalation"]
+    },
+    {
+      "squad_id": "ops-squad",
+      "name": "Ops Squad",
+      "description": "Monitoring-to-action workflow",
+      "agents": ["ops-sapper", "knowledge-librarian"],
+      "lead_agent": "ops-sapper",
+      "workflows": ["sla-monitoring", "data-quality-check", "reporting"]
+    }
+  ],
+  "global_settings": {
+    "retry_policy": {
+      "max_attempts": 3,
+      "backoff_multiplier": 2,
+      "initial_delay_seconds": 2
+    },
+    "timeout": {
+      "default_seconds": 30,
+      "max_seconds": 300
+    },
+    "logging": {
+      "level": "info",
+      "include_pii": false,
+      "retention_days": 90
+    },
+    "audit": {
+      "enabled": true,
+      "retention_years": 7
+    }
+  }
+}

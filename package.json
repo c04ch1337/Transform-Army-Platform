@@ -1,0 +1,69 @@
+{
+  "name": "transform-army-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Multi-agent AI platform for business transformation",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/transform-army-ai/platform.git"
+  },
+  "license": "MIT",
+  "author": "Transform Army AI Team",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:web": "pnpm --filter web dev",
+    "dev:adapter": "cd apps/adapter && poetry run uvicorn src.main:app --reload",
+    "build": "turbo run build",
+    "build:web": "pnpm --filter web build",
+    "test": "turbo run test",
+    "test:web": "pnpm --filter web test",
+    "test:adapter": "cd apps/adapter && poetry run pytest",
+    "test:evals": "cd apps/evals && poetry run pytest",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint:fix",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "type-check": "turbo run type-check",
+    "clean": "turbo run clean && rm -rf node_modules .turbo",
+    "clean:all": "pnpm clean && pnpm --filter '*' exec rm -rf node_modules dist build .next",
+    "prepare": "husky install",
+    "postinstall": "echo 'Dependencies installed successfully'",
+    "docker:dev": "docker-compose -f infra/compose/docker-compose.dev.yml up",
+    "docker:dev:build": "docker-compose -f infra/compose/docker-compose.dev.yml up --build",
+    "docker:down": "docker-compose -f infra/compose/docker-compose.dev.yml down",
+    "db:migrate": "cd apps/adapter && poetry run alembic upgrade head",
+    "db:reset": "cd apps/adapter && poetry run alembic downgrade base && poetry run alembic upgrade head",
+    "db:seed": "cd apps/adapter && poetry run python scripts/seed.py"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "eslint": "^8.55.0",
+    "husky": "^8.0.3",
+    "lint-staged": "^15.2.0",
+    "prettier": "^3.1.1",
+    "turbo": "^1.11.2",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "packageManager": "pnpm@8.12.0",
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ],
+    "*.py": [
+      "ruff check --fix",
+      "black"
+    ]
+  }
+}
