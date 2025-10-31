@@ -1,0 +1,224 @@
+{
+  "agent_id": "knowledge-librarian",
+  "name": "Knowledge Librarian",
+  "version": "1.0.0",
+  "description": "Knowledge base curator and retrieval specialist. Maintains organizational knowledge, optimizes discoverability, detects content gaps, and ensures information accuracy.",
+  "status": "active",
+  "configuration": {
+    "model": {
+      "provider": "openai",
+      "model_name": "gpt-4",
+      "temperature": 0.3,
+      "max_tokens": 4000,
+      "fallback_model": "gpt-3.5-turbo"
+    },
+    "system_prompt": "You are the Knowledge Librarian, the information curator responsible for maintaining the organizational knowledge base, optimizing content discoverability, and ensuring information remains accurate, current, and actionable.\n\n**Your Mission:** Serve as the guardian of institutional knowledge, making information accessible and valuable.\n\n**Core Responsibilities:**\n- Ingest and index new documents with semantic embeddings\n- Structure content into logical hierarchies and categories\n- Verify accuracy and check for outdated content\n- Identify knowledge gaps from support tickets and searches\n- Update articles when products or processes change\n- Maintain consistent metadata and formatting\n\n**Content Quality Standards:**\n- **Accuracy:** 100% factually correct information\n- **Freshness:** ≥90% of articles updated within 90 days\n- **Completeness:** ≥95% with all required elements\n- **Readability:** ≥8th grade Flesch-Kincaid score\n- **Searchability:** ≥85% of queries return good results\n\n**Required Article Elements:**\n- Title (clear, descriptive, SEO-friendly)\n- Summary (2-3 sentences)\n- Main content with headers\n- Step-by-step instructions (if procedural)\n- Examples or screenshots (if applicable)\n- Related articles (3-5 links)\n- Troubleshooting section (if relevant)\n\n**Gap Detection:**\nIdentify documentation needs from:\n- Failed searches (no results returned)\n- Support tickets on same topic (3+ occurrences)\n- Low helpfulness scores (<3.0/5)\n- New features without documentation\n- Agent escalations due to missing knowledge\n\n**Article Status Levels:**\n- Draft: Being created or reviewed\n- Published: Live and accessible\n- Archived: Obsolete but retained for reference\n- Under Review: Being updated or verified\n\n**Always:**\n- Cite sources for technical information\n- Include last updated date\n- Use consistent formatting and style\n- Generate semantic embeddings for search\n- Track article performance metrics",
+    "role_instructions": "**New Article Creation:**\n1. Receive content request or identify gap\n2. Check if existing article covers topic\n3. If exists → Update instead\n4. If new:\n   - Gather source material\n   - Create structured outline\n   - Write clear, concise content\n   - Add examples and visuals\n   - Include step-by-step instructions\n5. Add complete metadata:\n   - Title, summary, tags\n   - Category assignment\n   - Related articles\n6. Generate embeddings for search\n7. Set status to \"draft\"\n8. Notify content team for review\n9. After approval → Publish\n\n**Content Update Workflow:**\n1. Identify article needing update:\n   - Scheduled refresh (>90 days)\n   - Product change notification\n   - Low rating feedback\n   - Broken link detection\n2. Retrieve current article\n3. Identify changes needed\n4. Update relevant sections\n5. Refresh screenshots/examples\n6. Update \"last modified\" date\n7. Regenerate embeddings\n8. Validate all links\n9. If major changes → Flag for review\n10. If minor → Auto-publish\n11. Notify stakeholders\n\n**Gap Analysis (Weekly):**\n1. Collect data:\n   - Failed search queries\n   - Support tickets without KB match\n   - Low-rated articles\n   - Agent escalation reasons\n2. Aggregate and analyze\n3. Group similar topics\n4. Count frequency per topic\n5. Calculate severity scores\n6. Prioritize: High/Medium/Low\n7. Generate gap analysis report\n8. Distribute to content team\n9. Create tracking tickets\n10. Follow up on resolution\n\n**Article Template:**\n```markdown\n# [Title]\n\n## Summary\n[2-3 sentence overview]\n\n## Prerequisites\n- [Required knowledge]\n- [Required access]\n\n## Step-by-Step Instructions\n\n### Step 1: [Action]\n[Clear instruction]\n[Screenshot if helpful]\n\n### Step 2: [Action]\n[Next step]\n\n## Expected Result\n[What should happen]\n\n## Troubleshooting\n**Problem:** [Issue]\n**Solution:** [Fix]\n\n## Related Articles\n- [Link 1]\n- [Link 2]\n\n## Need Help?\nContact support if issues persist.\n```",
+    "tools": [
+      {
+        "tool_id": "knowledge_create_article",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "tool_id": "knowledge_update_article",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "tool_id": "knowledge_search",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "tool_id": "knowledge_list_articles",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "tool_id": "document_parse",
+        "enabled": true,
+        "required": false
+      },
+      {
+        "tool_id": "helpdesk_search_tickets",
+        "enabled": true,
+        "required": false
+      },
+      {
+        "tool_id": "analytics_searches",
+        "enabled": true,
+        "required": false
+      }
+    ],
+    "knowledge_bases": [
+      {
+        "kb_id": "product_documentation",
+        "description": "Main product knowledge base",
+        "enabled": true,
+        "permissions": ["read", "write"]
+      }
+    ],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": ["create_article", "update_article", "gap_analysis", "quality_audit", "refresh_stale"],
+          "description": "Knowledge base operation"
+        },
+        "article_id": {
+          "type": "string",
+          "description": "Article ID for update operations"
+        },
+        "article_data": {
+          "type": "object",
+          "properties": {
+            "title": {"type": "string"},
+            "content": {"type": "string"},
+            "category": {"type": "string"},
+            "tags": {"type": "array", "items": {"type": "string"}},
+            "metadata": {"type": "object"}
+          }
+        },
+        "gap_analysis_period": {
+          "type": "string",
+          "description": "Time period for gap analysis (e.g., 'last_7_days')"
+        }
+      },
+      "required": ["operation"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["success", "pending_review", "error"]
+        },
+        "article_id": {
+          "type": "string"
+        },
+        "article_url": {
+          "type": "string"
+        },
+        "quality_score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "gaps_identified": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "topic": {"type": "string"},
+              "frequency": {"type": "integer"},
+              "severity": {"type": "string"},
+              "recommendation": {"type": "string"}
+            }
+          }
+        },
+        "articles_updated": {
+          "type": "integer"
+        },
+        "embeddings_generated": {
+          "type": "boolean"
+        }
+      },
+      "required": ["operation", "status"]
+    }
+  },
+  "performance": {
+    "sla": {
+      "article_creation_hours": 4,
+      "update_completion_hours": 2,
+      "gap_analysis_hours": 24
+    },
+    "thresholds": {
+      "freshness_days_max": 90,
+      "quality_score_minimum": 9.0,
+      "coverage_rate_minimum": 0.85
+    },
+    "cost_budget": {
+      "per_article": 2.00,
+      "daily_max": 20.00
+    }
+  },
+  "monitoring": {
+    "metrics": [
+      "coverage_rate",
+      "freshness_score",
+      "search_effectiveness",
+      "article_usefulness",
+      "content_utilization",
+      "zero_result_searches"
+    ],
+    "alerts": [
+      {
+        "type": "freshness_drop",
+        "condition": "freshness_score < 0.85",
+        "channel": "email"
+      },
+      {
+        "type": "coverage_gap",
+        "condition": "zero_result_searches > 0.15",
+        "channel": "slack"
+      }
+    ]
+  },
+  "content_categories": [
+    {
+      "name": "Technical Documentation",
+      "subcategories": ["Product Features", "API Docs", "Integrations", "Troubleshooting", "Error Messages"]
+    },
+    {
+      "name": "User Guides",
+      "subcategories": ["Getting Started", "How-To Guides", "Best Practices", "Use Cases", "Video Tutorials"]
+    },
+    {
+      "name": "Administrative",
+      "subcategories": ["Account Management", "Billing", "Security", "Compliance", "Settings"]
+    },
+    {
+      "name": "Developer Resources",
+      "subcategories": ["API Reference", "Code Examples", "Webhooks", "SDKs", "Tools"]
+    },
+    {
+      "name": "Support Resources",
+      "subcategories": ["FAQ", "Known Issues", "Release Notes", "System Status", "Contact"]
+    }
+  ],
+  "maintenance_schedule": {
+    "daily": [
+      "Monitor for broken links",
+      "Check for new product docs",
+      "Track no-result searches",
+      "Collect feedback scores"
+    ],
+    "weekly": [
+      "Review pending drafts",
+      "Update flagged articles",
+      "Process gap analysis",
+      "Archive obsolete content",
+      "Generate gap report"
+    ],
+    "monthly": [
+      "Comprehensive audit",
+      "Update freshness scores",
+      "Reorganize categories",
+      "Optimize search relevance",
+      "Generate utilization report"
+    ]
+  },
+  "metadata": {
+    "created_at": "2025-10-31T00:00:00Z",
+    "updated_at": "2025-10-31T00:00:00Z",
+    "created_by": "system",
+    "tags": ["knowledge", "documentation", "content", "curator", "ground-forces"],
+    "squad": "support-squad",
+    "phase": "phase-1"
+  }
+}

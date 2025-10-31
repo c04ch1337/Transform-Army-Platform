@@ -1,0 +1,323 @@
+{
+  "workflow_id": "support-triage-workflow",
+  "name": "Support Triage Workflow",
+  "version": "1.0.0",
+  "description": "Multi-agent workflow for triaging support tickets, searching knowledge base for solutions, identifying content gaps, and ensuring quality responses. Uses Support Concierge, Knowledge Librarian, and QA Auditor.",
+  "status": "active",
+  "configuration": {
+    "trigger": {
+      "type": "webhook",
+      "endpoint": "/api/v1/workflows/support-triage/trigger",
+      "events": ["ticket.created", "ticket.updated", "email.received"],
+      "description": "Triggered when new support ticket is created or updated"
+    },
+    "agents": [
+      {
+        "agent_id": "support-concierge",
+        "step": 1,
+        "name": "Ticket Triage & KB Search",
+        "description": "Classify ticket, search knowledge base, attempt deflection or escalate"
+      },
+      {
+        "agent_id": "knowledge-librarian",
+        "step": 2,
+        "name": "Knowledge Gap Detection",
+        "description": "Check for knowledge gaps if no KB match found",
+        "conditional": "{{step1.output.kb_confidence}} < 0.70"
+      },
+      {
+        "agent_id": "support-concierge",
+        "step": 3,
+        "name": "Final Response",
+        "description": "Post response or escalate to human with full context"
+      },
+      {
+        "agent_id": "qa-auditor",
+        "step": 4,
+        "name": "Response Quality Check",
+        "description": "Validate response quality and deflection accuracy",
+        "conditional": "{{step3.output.status}} == 'deflected'"
+      }
+    ],
+    "variable_passing": {
+      "step1_to_step2": {
+        "description": "Pass ticket details and search results to Knowledge Librarian",
+        "variables": {
+          "operation": "gap_analysis",
+          "ticket_id": "{{step1.input.ticket_id}}",
+          "search_query": "{{step1.output.search_query}}",
+          "kb_confidence": "{{step1.output.kb_confidence}}",
+          "category": "{{step1.output.category}}",
+          "no_results_found": "{{step1.output.kb_confidence < 0.70}}"
+        }
+      },
+      "step2_to_step3": {
+        "description": "Pass gap analysis back to Support Concierge",
+        "variables": {
+          "ticket_id": "{{step1.input.ticket_id}}",
+          "kb_article_id": "{{step1.output.kb_article_used}}",
+          "gap_flagged": "{{step2.output.gaps_identified.length > 0}}",
+          "escalate": "{{step1.output.kb_confidence < 0.70}}"
+        }
+      },
+      "step3_to_step4": {
+        "description": "Pass response to QA for validation",
+        "variables": {
+          "agent_id": "support-concierge",
+          "operation": "validate_output",
+          "output_data": "{{step3.output}}",
+          "context": {
+            "ticket_id": "{{step1.input.ticket_id}}",
+            "priority": "{{step1.output.priority}}",
+            "deflected": "{{step3.output.status == 'deflected'}}",
+            "kb_confidence": "{{step1.output.kb_confidence}}"
+          }
+        }
+      }
+    },
+    "execution_flow": {
+      "step1": {
+        "agent": "support-concierge",
+        "input_mapping": {
+          "ticket_id": "{{trigger.ticket_id}}",
+          "subject": "{{trigger.subject}}",
+          "description": "{{trigger.description}}",
+          "requester_email": "{{trigger.requester_email}}",
+          "requester_name": "{{trigger.requester_name}}",
+          "priority": "{{trigger.priority}}",
+          "tags": "{{trigger.tags}}"
+        },
+        "timeout_seconds": 60,
+        "retry_policy": {
+          "max_attempts": 3,
+          "backoff_multiplier": 2
+        },
+        "on_success": "proceed_to_step2_if_low_confidence",
+        "on_failure": "escalate_to_human"
+      },
+      "step2": {
+        "agent": "knowledge-librarian",
+        "condition": "{{step1.output.kb_confidence}} < 0.70 OR {{step1.output.knowledge_gap_flagged}}",
+        "input_mapping": {
+          "operation": "gap_analysis",
+          "ticket_id": "{{step1.input.ticket_id}}",
+          "search_query": "{{step1.output.category}}",
+          "gap_analysis_period": "last_7_days"
+        },
+        "timeout_seconds": 120,
+        "retry_policy": {
+          "max_attempts": 2,
+          "backoff_multiplier": 2
+        },
+        "on_success": "proceed_to_step3",
+        "on_failure": "proceed_to_step3",
+        "skip_if_condition_false": true
+      },
+      "step3": {
+        "agent": "support-concierge",
+        "input_mapping": {
+          "operation": "finalize_response",
+          "ticket_id": "{{step1.input.ticket_id}}",
+          "kb_article_id": "{{step1.output.kb_article_used}}",
+          "kb_confidence": "{{step1.output.kb_confidence}}",
+          "gap_flagged": "{{step2.output.gaps_identified.length > 0}}",
+          "priority": "{{step1.output.priority}}"
+        },
+        "timeout_seconds": 60,
+        "retry_policy": {
+          "max_attempts": 3,
+          "backoff_multiplier": 2
+        },
+        "on_success": "proceed_to_step4_if_deflected",
+        "on_failure": "escalate_to_human"
+      },
+      "step4": {
+        "agent": "qa-auditor",
+        "condition": "{{step3.output.status}} == 'deflected'",
+        "input_mapping": {
+          "operation": "validate_output",
+          "agent_id": "support-concierge",
+          "output_data": "{{step3.output}}",
+          "context": {
+            "workflow": "support-triage",
+            "ticket_id": "{{step1.input.ticket_id}}",
+            "deflection_attempted": true
+          }
+        },
+        "timeout_seconds": 30,
+        "retry_policy": {
+          "max_attempts": 1
+        },
+        "on_success": "complete_workflow",
+        "on_failure": "complete_with_warning",
+        "skip_if_condition_false": true
+      }
+    },
+    "human_approval_gates": [
+      {
+        "gate_id": "p1_ticket_approval",
+        "position": "before_step3",
+        "condition": "{{step1.output.priority}} == 'p1'",
+        "approval_required_from": "support_manager",
+        "timeout_minutes": 15,
+        "on_timeout": "auto_escalate",
+        "notification": {
+          "channels": ["slack", "email"],
+          "message": "P1 Ticket requires immediate attention: {{step1.input.subject}}"
+        }
+      }
+    ],
+    "escalation_conditions": [
+      {
+        "condition": "{{step1.output.priority}} == 'p1'",
+        "action": "immediate_escalate",
+        "assign_to": "senior_support_engineer",
+        "notify_channels": ["slack"],
+        "message": "Critical ticket: {{step1.input.subject}}"
+      },
+      {
+        "condition": "{{step1.output.status}} == 'escalated'",
+        "action": "create_task",
+        "assign_to": "support_team",
+        "priority": "{{step1.output.priority}}",
+        "include_context": true
+      },
+      {
+        "condition": "{{step3.output.status}} == 'deflected' AND {{step4.output.validation_result}} == 'blocked'",
+        "action": "reopen_ticket",
+        "assign_to": "human_agent",
+        "message": "QA blocked deflection - requires human review"
+      },
+      {
+        "condition": "{{step2.output.gaps_identified.length}} >= 3",
+        "action": "notify",
+        "channels": ["email"],
+        "recipient": "content_team",
+        "message": "Multiple knowledge gaps detected - content creation needed"
+      }
+    ],
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "workflow_status": {
+          "type": "string",
+          "enum": ["deflected", "escalated", "pending", "failed"]
+        },
+        "ticket_id": {
+          "type": "string"
+        },
+        "ticket_status": {
+          "type": "string"
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["p1", "p2", "p3", "p4"]
+        },
+        "category": {
+          "type": "string"
+        },
+        "deflection_successful": {
+          "type": "boolean"
+        },
+        "kb_article_used": {
+          "type": "string"
+        },
+        "kb_confidence": {
+          "type": "number"
+        },
+        "knowledge_gaps_flagged": {
+          "type": "integer"
+        },
+        "escalated_to": {
+          "type": "string"
+        },
+        "qa_score": {
+          "type": "number"
+        },
+        "response_time_seconds": {
+          "type": "integer"
+        },
+        "total_cost": {
+          "type": "number"
+        }
+      }
+    }
+  },
+  "performance": {
+    "sla": {
+      "p1_total_minutes": 15,
+      "p2_total_minutes": 120,
+      "p3_total_hours": 8,
+      "p4_total_hours": 24
+    },
+    "targets": {
+      "deflection_rate": 0.40,
+      "deflection_accuracy": 0.95,
+      "escalation_quality": 0.90
+    },
+    "cost_budget": {
+      "per_workflow": 0.50,
+      "breakdown": {
+        "step1_support": 0.30,
+        "step2_librarian": 0.10,
+        "step3_support": 0.05,
+        "step4_qa": 0.05
+      }
+    }
+  },
+  "monitoring": {
+    "metrics": [
+      "workflow_completion_rate",
+      "deflection_rate",
+      "deflection_accuracy",
+      "escalation_quality_score",
+      "average_response_time",
+      "sla_compliance",
+      "knowledge_gaps_identified"
+    ],
+    "alerts": [
+      {
+        "type": "sla_breach",
+        "condition": "response_time > sla_by_priority",
+        "channel": "slack",
+        "priority": "critical"
+      },
+      {
+        "type": "deflection_failure",
+        "condition": "deflected AND reopened_within_7_days",
+        "channel": "email",
+        "priority": "medium"
+      },
+      {
+        "type": "knowledge_gap_spike",
+        "condition": "gaps_flagged_today > 10",
+        "channel": "slack",
+        "recipient": "content_team"
+      }
+    ]
+  },
+  "quality_checks": {
+    "pre_deflection": [
+      "KB confidence >= 0.80",
+      "Priority <= P3",
+      "No security concerns",
+      "No billing issues",
+      "Solution is complete"
+    ],
+    "post_deflection": [
+      "QA score >= 7.0",
+      "Response posted successfully",
+      "Customer notified",
+      "Ticket status updated"
+    ]
+  },
+  "metadata": {
+    "created_at": "2025-10-31T00:00:00Z",
+    "updated_at": "2025-10-31T00:00:00Z",
+    "created_by": "system",
+    "tags": ["support", "triage", "deflection", "knowledge", "multi-agent"],
+    "squad": "support-squad",
+    "phase": "phase-1",
+    "relevance_workforce_compatible": true
+  }
+}

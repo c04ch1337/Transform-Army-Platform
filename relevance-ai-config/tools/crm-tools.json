@@ -1,0 +1,381 @@
+{
+  "tool_category": "crm",
+  "description": "CRM integration tools for contact, company, deal, and note management across HubSpot, Salesforce, and other CRM providers via the adapter service",
+  "adapter_base_url": "{{ADAPTER_SERVICE_URL}}",
+  "version": "1.0.0",
+  "tools": [
+    {
+      "tool_id": "crm_search_contacts",
+      "name": "Search CRM Contacts",
+      "description": "Search for contacts in the CRM system by email, name, company, or other criteria. Returns matching contacts with relevance scores.",
+      "http_config": {
+        "method": "POST",
+        "endpoint": "/api/v1/crm/contacts/search",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 30
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query string (email, name, or keyword)"
+          },
+          "fields": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Fields to return in results",
+            "default": ["id", "email", "first_name", "last_name", "company", "title"]
+          },
+          "filters": {
+            "type": "object",
+            "description": "Additional filters (company, tags, etc.)",
+            "properties": {
+              "company": {"type": "string"},
+              "tags": {"type": "array", "items": {"type": "string"}}
+            }
+          },
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "page": {"type": "integer", "default": 1},
+              "page_size": {"type": "integer", "default": 10}
+            }
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "matches": {
+            "type": "array",
+            "description": "Array of matching contacts with scores"
+          },
+          "pagination": {
+            "type": "object",
+            "description": "Pagination metadata"
+          }
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 3,
+        "backoff_multiplier": 2
+      }
+    },
+    {
+      "tool_id": "crm_create_contact",
+      "name": "Create CRM Contact",
+      "description": "Create a new contact in the CRM system. Supports deduplication and optional update if contact already exists.",
+      "http_config": {
+        "method": "POST",
+        "endpoint": "/api/v1/crm/contacts",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 30
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "idempotency_key": {
+            "type": "string",
+            "description": "Unique key for idempotent operation"
+          },
+          "correlation_id": {
+            "type": "string",
+            "description": "Correlation ID for request tracing"
+          },
+          "contact": {
+            "type": "object",
+            "required": ["email"],
+            "properties": {
+              "email": {"type": "string", "format": "email"},
+              "first_name": {"type": "string"},
+              "last_name": {"type": "string"},
+              "company": {"type": "string"},
+              "phone": {"type": "string"},
+              "title": {"type": "string"},
+              "owner_id": {"type": "string"},
+              "tags": {"type": "array", "items": {"type": "string"}},
+              "custom_fields": {"type": "object"}
+            }
+          },
+          "options": {
+            "type": "object",
+            "properties": {
+              "dedupe_by": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Fields to check for duplicates",
+                "default": ["email"]
+              },
+              "update_if_exists": {
+                "type": "boolean",
+                "description": "Update contact if duplicate found",
+                "default": false
+              }
+            }
+          }
+        },
+        "required": ["contact"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "contact": {
+            "type": "object",
+            "description": "Created or updated contact object"
+          },
+          "created": {
+            "type": "boolean",
+            "description": "True if new contact, false if updated"
+          },
+          "contact_id": {
+            "type": "string",
+            "description": "CRM contact ID"
+          }
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 3,
+        "backoff_multiplier": 2
+      }
+    },
+    {
+      "tool_id": "crm_update_contact",
+      "name": "Update CRM Contact",
+      "description": "Update an existing contact in the CRM system. Supports partial updates.",
+      "http_config": {
+        "method": "PUT",
+        "endpoint": "/api/v1/crm/contacts/{contact_id}",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 30
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "contact_id": {
+            "type": "string",
+            "description": "CRM contact ID to update"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "description": "Unique key for idempotent operation"
+          },
+          "correlation_id": {
+            "type": "string",
+            "description": "Correlation ID for request tracing"
+          },
+          "updates": {
+            "type": "object",
+            "description": "Fields to update (partial update)",
+            "properties": {
+              "first_name": {"type": "string"},
+              "last_name": {"type": "string"},
+              "company": {"type": "string"},
+              "phone": {"type": "string"},
+              "title": {"type": "string"},
+              "tags": {"type": "array", "items": {"type": "string"}},
+              "custom_fields": {"type": "object"}
+            }
+          }
+        },
+        "required": ["contact_id", "updates"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "contact": {
+            "type": "object",
+            "description": "Updated contact object"
+          },
+          "updated_fields": {
+            "type": "array",
+            "description": "List of fields that were updated"
+          }
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 3,
+        "backoff_multiplier": 2
+      }
+    },
+    {
+      "tool_id": "crm_add_note",
+      "name": "Add CRM Note",
+      "description": "Add a note or activity to a CRM contact, company, or deal record.",
+      "http_config": {
+        "method": "POST",
+        "endpoint": "/api/v1/crm/notes",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 30
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "idempotency_key": {
+            "type": "string",
+            "description": "Unique key for idempotent operation"
+          },
+          "correlation_id": {
+            "type": "string",
+            "description": "Correlation ID for request tracing"
+          },
+          "entity_type": {
+            "type": "string",
+            "enum": ["contact", "company", "deal"],
+            "description": "Type of entity to attach note to"
+          },
+          "entity_id": {
+            "type": "string",
+            "description": "ID of the entity"
+          },
+          "note": {
+            "type": "object",
+            "required": ["content"],
+            "properties": {
+              "content": {
+                "type": "string",
+                "description": "Note content/body"
+              },
+              "type": {
+                "type": "string",
+                "description": "Note type (e.g., 'call_note', 'email', 'meeting')"
+              },
+              "timestamp": {
+                "type": "string",
+                "format": "date-time",
+                "description": "When the activity occurred"
+              }
+            }
+          }
+        },
+        "required": ["entity_type", "entity_id", "note"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "note_id": {
+            "type": "string",
+            "description": "Created note ID"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 3,
+        "backoff_multiplier": 2
+      }
+    },
+    {
+      "tool_id": "crm_create_deal",
+      "name": "Create CRM Deal",
+      "description": "Create a new deal/opportunity in the CRM system.",
+      "http_config": {
+        "method": "POST",
+        "endpoint": "/api/v1/crm/deals",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 30
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "idempotency_key": {
+            "type": "string",
+            "description": "Unique key for idempotent operation"
+          },
+          "correlation_id": {
+            "type": "string",
+            "description": "Correlation ID for request tracing"
+          },
+          "deal": {
+            "type": "object",
+            "required": ["name", "stage"],
+            "properties": {
+              "name": {"type": "string", "description": "Deal name"},
+              "amount": {"type": "number", "description": "Deal amount/value"},
+              "currency": {"type": "string", "default": "USD"},
+              "stage": {"type": "string", "description": "Deal stage"},
+              "probability": {"type": "number", "minimum": 0, "maximum": 1},
+              "close_date": {"type": "string", "description": "Expected close date (YYYY-MM-DD)"},
+              "contact_ids": {"type": "array", "items": {"type": "string"}},
+              "company_id": {"type": "string"},
+              "owner_id": {"type": "string"},
+              "custom_fields": {"type": "object"}
+            }
+          }
+        },
+        "required": ["deal"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "deal_id": {
+            "type": "string",
+            "description": "Created deal ID"
+          },
+          "deal": {
+            "type": "object",
+            "description": "Created deal object"
+          }
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 3,
+        "backoff_multiplier": 2
+      }
+    }
+  ],
+  "configuration": {
+    "provider_mapping": {
+      "hubspot": {
+        "enabled": true,
+        "credentials_key": "HUBSPOT_API_KEY"
+      },
+      "salesforce": {
+        "enabled": true,
+        "credentials_key": "SALESFORCE_CREDENTIALS"
+      }
+    },
+    "rate_limits": {
+      "requests_per_minute": 100,
+      "concurrent_requests": 10
+    },
+    "caching": {
+      "enabled": true,
+      "ttl_seconds": 300,
+      "cache_searches": true
+    }
+  },
+  "metadata": {
+    "created_at": "2025-10-31T00:00:00Z",
+    "updated_at": "2025-10-31T00:00:00Z",
+    "version": "1.0.0"
+  }
+}

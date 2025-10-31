@@ -1,0 +1,346 @@
+
+{
+  "schema_version": "1.0.0",
+  "description": "Relevance AI Knowledge table schema for Transform Army AI platform. Defines structure for per-client knowledge bases with semantic search capabilities.",
+  "table_configuration": {
+    "table_naming": {
+      "pattern": "kb_{tenant_id}_{category}",
+      "examples": [
+        "kb_client001_product_docs",
+        "kb_client001_troubleshooting",
+        "kb_client001_faq"
+      ],
+      "note": "Each client gets isolated knowledge tables with tenant_id prefix"
+    },
+    "fields": [
+      {
+        "name": "id",
+        "type": "string",
+        "required": true,
+        "unique": true,
+        "description": "Unique article identifier",
+        "example": "kb_article_001"
+      },
+      {
+        "name": "title",
+        "type": "string",
+        "required": true,
+        "indexed": true,
+        "description": "Article title (clear, descriptive, SEO-friendly)",
+        "max_length": 200,
+        "example": "How to Reset Your Password"
+      },
+      {
+        "name": "content",
+        "type": "text",
+        "required": true,
+        "description": "Full article content in markdown format",
+        "vectorized": true,
+        "chunk_size": 1000,
+        "example": "# Password Reset\n\nTo reset your password:\n1. Click 'Forgot Password'\n2. Enter your email\n3. Check your inbox..."
+      },
+      {
+        "name": "summary",
+        "type": "string",
+        "required": true,
+        "description": "Brief 2-3 sentence summary",
+        "max_length": 500,
+        "example": "Learn how to reset your account password. This guide covers the password reset process, security requirements, and troubleshooting."
+      },
+      {
+        "name": "category",
+        "type": "string",
+        "required": true,
+        "indexed": true,
+        "description": "Primary category classification",
+        "allowed_values": [
+          "authentication",
+          "getting_started",
+          "integrations",
+          "troubleshooting",
+          "api_docs",
+          "billing",
+          "security",
+          "features",
+          "admin",
+          "developer"
+        ],
+        "example": "authentication"
+      },
+      {
+        "name": "tags",
+        "type": "array",
+        "items": {"type": "string"},
+        "required": false,
+        "indexed": true,
+        "description": "Keywords for discovery (3-5 recommended)",
+        "example": ["password", "account", "security", "reset"]
+      },
+      {
+        "name": "status",
+        "type": "string",
+        "required": true,
+        "indexed": true,
+        "allowed_values": ["draft", "published", "archived", "under_review"],
+        "default": "draft",
+        "description": "Publication status"
+      },
+      {
+        "name": "published",
+        "type": "boolean",
+        "required": true,
+        "indexed": true,
+        "default": false,
+        "description": "Whether article is publicly accessible"
+      },
+      {
+        "name": "url",
+        "type": "string",
+        "required": false,
+        "description": "URL to view article in help center",
+        "example": "https://help.transform-army.ai/articles/password-reset"
+      },
+      {
+        "name": "author",
+        "type": "string",
+        "required": false,
+        "description": "Article author or creator",
+        "example": "docs-team"
+      },
+      {
+        "name": "version",
+        "type": "string",
+        "required": false,
+        "description": "Article version number",
+        "example": "1.2.0"
+      },
+      {
+        "name": "language",
+        "type": "string",
+        "required": true,
+        "default": "en",
+        "description": "Language code (ISO 639-1)",
+        "example": "en"
+      },
+      {
+        "name": "created_at",
+        "type": "datetime",
+        "required": true,
+        "indexed": true,
+        "auto_generate": true,
+        "description": "Article creation timestamp"
+      },
+      {
+        "name": "updated_at",
+        "type": "datetime",
+        "required": true,
+        "indexed": true,
+        "auto_update": true,
+        "description": "Last update timestamp"
+      },
+      {
+        "name": "published_at",
+        "type": "datetime",
+        "required": false,
+        "description": "Publication timestamp"
+      },
+      {
+        "name": "last_reviewed",
+        "type": "datetime",
+        "required": false,
+        "description": "Last review/validation date"
+      },
+      {
+        "name": "helpful_votes",
+        "type": "integer",
+        "required": false,
+        "default": 0,
+        "description": "Number of helpful votes"
+      },
+      {
+        "name": "unhelpful_votes",
+        "type": "integer",
+        "required": false,
+        "default": 0,
+        "description": "Number of unhelpful votes"
+      },
+      {
+        "name": "view_count",
+        "type": "integer",
+        "required": false,
+        "default": 0,
+        "description": "Number of times article was viewed"
+      },
+      {
+        "name": "parent_id",
+        "type": "string",
+        "required": false,
+        "description": "Parent article ID for hierarchical docs"
+      },
+      {
+        "name": "related_ids",
+        "type": "array",
+        "items": {"type": "string"},
+        "required": false,
+        "description": "Related article IDs"
+      },
+      {
+        "name": "custom_fields",
+        "type": "object",
+        "required": false,
+        "description": "Client-specific custom fields"
+      }
+    ],
+    "embeddings": {
+      "field": "content",
+      "model": "text-embedding-ada-002",
+      "dimensions": 1536,
+      "chunk_strategy": "semantic",
+      "chunk_size": 1000,
+      "chunk_overlap": 200,
+      "auto_generate": true,
+      "update_on_content_change": true
+    },
+    "indexes": [
+      {
+        "name": "idx_category_published",
+        "fields": ["category", "published"],
+        "type": "composite"
+      },
+      {
+        "name": "idx_tags",
+        "fields": ["tags"],
+        "type": "array"
+      },
+      {
+        "name": "idx_updated_at",
+        "fields": ["updated_at"],
+        "type": "single"
+      },
+      {
+        "name": "idx_status",
+        "fields": ["status"],
+        "type": "single"
+      },
+      {
+        "name": "idx_vector",
+        "fields": ["embeddings"],
+        "type": "vector",
+        "metric": "cosine"
+      }
+    ],
+    "access_control": {
+      "tenant_isolation": {
+        "enabled": true,
+        "isolation_method": "table_prefix",
+        "row_level_security": false
+      },
+      "permissions": {
+        "agents": {
+          "support_concierge": ["read"],
+          "knowledge_librarian": ["read", "write"],
+          "all_others": ["read"]
+        },
+        "roles": {
+          "tenant_admin": ["read", "write", "delete"],
+          "operator": ["read", "write"],
+          "viewer": ["read"]
+        }
+      }
+    },
+    "retention": {
+      "archived_articles": {
+        "retention_days": 365,
+        "auto_archive_criteria": {
+          "unpublished_for_days": 90,
+          "no_views_for_days": 180
+        }
+      },
+      "deleted_articles": {
+        "soft_delete": true,
+        "permanent_delete_after_days": 30
+      }
+    }
+  },
+  "recommended_tables_per_client": [
+    {
+      "table_name": "kb_{tenant_id}_product_docs",
+      "category": "product_documentation",
+      "description": "Product features and technical documentation"
+    },
+    {
+      "table_name": "kb_{tenant_id}_troubleshooting",
+      "category": "troubleshooting",
+      "description": "Common issues and solutions"
+    },
+    {
+      "table_name": "kb_{tenant_id}_faq",
+      "category": "faq",
+      "description": "Frequently asked questions"
+    },
+    {
+      "table_name": "kb_{tenant_id}_onboarding",
+      "category": "getting_started",
+      "description": "Onboarding and getting started guides"
+    },
+    {
+      "table_name": "kb_{tenant_id}_api_docs",
+      "category": "api_documentation",
+      "description": "API reference and developer guides"
+    }
+  ],
+  "search_configuration": {
+    "default_search_fields": ["title", "content", "summary", "tags"],
+    "boost_factors": {
+      "title": 2.0,
+      "tags": 1.5,
+      "summary": 1.2,
+      "content": 1.0
+    },
+    "filters": {
+      "always_apply": {
+        "published": true
+      },
+      "available": [
+        "category",
+        "tags",
+        "language",
+        "created_after",
+        "updated_after"
+      ]
+    },
+    "ranking": {
+      "semantic_weight": 0.7,
+      "keyword_weight": 0.3,
+      "recency_boost": 0.1,
+      "popularity_boost": 0.1
+    }
+  },
+  "quality_requirements": {
+    "minimum_standards": {
+      "title_length": {"min": 10, "max": 200},
+      "summary_length": {"min": 50, "max": 500},
+      "content_length": {"min": 100, "max": 50000},
+      "tags_count": {"min": 3, "max": 10}
+    },
+    "completeness_checks": [
+      "title is not empty",
+      "content is not empty",
+      "summary is not empty",
+      "category is valid",
+      "at least 3 tags present",
+      "language is specified"
+    ],
+    "freshness_policy": {
+      "review_interval_days": 90,
+      "auto_flag_stale_after_days": 120,
+      "archive_unused_after_days": 365
+    }
+  },
+  "metadata": {
+    "created_at": "2025-10-31T00:00:00Z",
+    "updated_at": "2025-10-31T00:00:00Z",
+    "version": "1.0.0",
+    "compatible_with": "Relevance AI Knowledge Tables API v2+"
+  }
+}

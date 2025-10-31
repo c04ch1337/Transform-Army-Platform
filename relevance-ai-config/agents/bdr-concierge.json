@@ -1,0 +1,204 @@
+{
+  "agent_id": "bdr-concierge",
+  "name": "BDR Concierge",
+  "version": "1.0.0",
+  "description": "Inbound lead qualification and meeting coordination agent. Applies BANT framework to score leads, enriches CRM data, and books discovery meetings with qualified prospects.",
+  "status": "active",
+  "configuration": {
+    "model": {
+      "provider": "openai",
+      "model_name": "gpt-4",
+      "temperature": 0.3,
+      "max_tokens": 2000,
+      "fallback_model": "gpt-3.5-turbo"
+    },
+    "system_prompt": "You are the BDR Concierge, a specialized AI agent responsible for qualifying inbound leads and coordinating sales meetings. You apply the BANT framework (Budget, Authority, Need, Timeline) to score leads objectively.\n\n**Your Mission:** Ensure every inbound lead is properly evaluated, documented, and routed according to qualification criteria.\n\n**Core Responsibilities:**\n- Extract lead information from conversations, forms, and emails\n- Apply BANT scoring: Budget (30 pts), Authority (25 pts), Need (30 pts), Timeline (15 pts)\n- Search CRM for duplicate contacts to prevent data pollution\n- Route qualified leads (score ≥70) for meeting booking\n- Create and update CRM records with complete data\n- Book discovery meetings with appropriate sales reps\n- Send confirmation emails and meeting reminders\n\n**Quality Standards:**\n- All BANT dimensions must be scored with clear justification\n- Required CRM fields: email, first/last name, company, lead source, qualification score\n- Professional, personalized communication tone\n- Zero grammatical errors in all communications\n- Response time: Within 5 minutes of lead submission\n\n**Escalation Triggers:**\n- Budget unclear AND deal size >$50K\n- Multiple decision-makers with conflicting requirements\n- VIP prospect (Fortune 500 or C-level at strategic account)\n- Competitor mentioned requiring competitive positioning\n- Sensitive industries (healthcare, finance, government)\n- Custom requirements outside standard offerings\n\n**Always:**\n- Validate email addresses and normalize company names\n- Include correlation IDs in all tool calls for tracing\n- Document reasoning for qualification scores\n- Follow privacy regulations (GDPR, CCPA)",
+    "role_instructions": "**Qualification Workflow:**\n1. Receive lead data (email, name, company, message)\n2. Search CRM for duplicate contact by email\n3. If duplicate exists → Update with new interaction\n4. If new → Extract company info and decision-maker level\n5. Calculate BANT score:\n   - Budget (30): High=25-30, Medium=15-24, Low=0-14\n   - Authority (25): High=20-25, Medium=10-19, Low=0-9\n   - Need (30): High=25-30, Medium=15-24, Low=0-14\n   - Timeline (15): High=12-15, Medium=6-11, Low=0-5\n6. If score ≥70 → Check calendar availability\n7. Book meeting with appropriate sales rep\n8. Send confirmation email with meeting details\n9. Add structured note to CRM with qualification details\n10. Return success summary\n\n**CRM Note Format:**\n```\nQUALIFICATION: [Date]\nScore: [XX]/100 - [Qualified/Unqualified]\n\nBANT Assessment:\n- Budget: [X]/30 - [Details]\n- Authority: [X]/25 - [Details]\n- Need: [X]/30 - [Details]\n- Timeline: [X]/15 - [Details]\n\nNext Action: [Meeting booked / Nurture / Disqualified]\nMeeting: [Date/Time] with [Sales Rep]\n\nNotes: [Additional context]\n```",
+    "tools": [
+      {
+        "tool_id": "crm_search_contacts",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "tool_id": "crm_create_contact",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "tool_id": "crm_update_contact",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "tool_id": "crm_add_note",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "tool_id": "calendar_check_availability",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "tool_id": "calendar_create_event",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "tool_id": "email_send",
+        "enabled": true,
+        "required": true
+      }
+    ],
+    "knowledge_bases": [
+      {
+        "kb_id": "sales_templates",
+        "description": "Email templates and qualification scripts",
+        "enabled": true
+      },
+      {
+        "kb_id": "company_info",
+        "description": "Product information and pricing",
+        "enabled": true
+      }
+    ],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "lead_email": {
+          "type": "string",
+          "format": "email",
+          "description": "Lead email address"
+        },
+        "lead_name": {
+          "type": "string",
+          "description": "Lead full name"
+        },
+        "company": {
+          "type": "string",
+          "description": "Company name"
+        },
+        "message": {
+          "type": "string",
+          "description": "Lead inquiry or message"
+        },
+        "lead_source": {
+          "type": "string",
+          "description": "Source of the lead (e.g., website, referral)",
+          "default": "website"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Lead phone number (optional)"
+        },
+        "title": {
+          "type": "string",
+          "description": "Job title (optional)"
+        }
+      },
+      "required": ["lead_email", "message"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["qualified", "unqualified", "escalated", "error"]
+        },
+        "qualification_score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "bant_breakdown": {
+          "type": "object",
+          "properties": {
+            "budget": {"type": "integer"},
+            "authority": {"type": "integer"},
+            "need": {"type": "integer"},
+            "timeline": {"type": "integer"}
+          }
+        },
+        "contact_id": {
+          "type": "string",
+          "description": "CRM contact ID"
+        },
+        "meeting_booked": {
+          "type": "boolean"
+        },
+        "meeting_details": {
+          "type": "object",
+          "properties": {
+            "date": {"type": "string"},
+            "time": {"type": "string"},
+            "sales_rep": {"type": "string"},
+            "meeting_url": {"type": "string"}
+          }
+        },
+        "reasoning": {
+          "type": "string",
+          "description": "Explanation of qualification decision"
+        },
+        "next_action": {
+          "type": "string",
+          "description": "Recommended next step"
+        }
+      },
+      "required": ["status", "qualification_score", "reasoning"]
+    }
+  },
+  "performance": {
+    "sla": {
+      "response_time_minutes": 5,
+      "processing_time_minutes": 10
+    },
+    "thresholds": {
+      "qualification_score_minimum": 70,
+      "confidence_minimum": 0.7,
+      "escalation_deal_value": 50000
+    },
+    "cost_budget": {
+      "per_operation": 0.50,
+      "daily_max": 50.00
+    }
+  },
+  "monitoring": {
+    "metrics": [
+      "qualification_accuracy",
+      "meeting_booking_rate",
+      "response_time",
+      "data_quality_score",
+      "duplicate_rate"
+    ],
+    "alerts": [
+      {
+        "type": "sla_breach",
+        "condition": "response_time > 10 minutes",
+        "channel": "slack"
+      },
+      {
+        "type": "quality_drop",
+        "condition": "data_quality_score < 0.90",
+        "channel": "email"
+      }
+    ]
+  },
+  "conversation_templates": {
+    "qualification_questions": [
+      "What budget have you set aside for this project?",
+      "Who else will be involved in this decision?",
+      "What problem are you trying to solve?",
+      "When do you need this implemented?"
+    ],
+    "confirmation_email": "Hi {{first_name}},\n\nThanks for your interest in {{company_name}}! I'm excited to confirm your {{meeting_type}} with {{sales_rep}} on {{date}} at {{time}} {{timezone}}.\n\nWhat to expect:\n- Product overview tailored to your needs\n- Q&A session\n- Next steps discussion\n\nMeeting details:\n{{meeting_link}}\n\nTo make the most of our time, please have ready:\n- Your current workflow challenges\n- Key stakeholders who should be involved\n- Timeline for implementation\n\nLooking forward to speaking with you!\n\nBest regards,\nTransform Army AI"
+  },
+  "metadata": {
+    "created_at": "2025-10-31T00:00:00Z",
+    "updated_at": "2025-10-31T00:00:00Z",
+    "created_by": "system",
+    "tags": ["sales", "lead-qualification", "bdr", "ground-forces"],
+    "squad": "sales-squad",
+    "phase": "phase-1"
+  }
+}

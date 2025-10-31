@@ -1,0 +1,360 @@
+{
+  "workflow_id": "lead-qualification-workflow",
+  "name": "Lead Qualification Workflow",
+  "version": "1.0.0",
+  "description": "Multi-agent workflow for qualifying inbound leads, enriching company data, booking meetings, and validating quality. Uses BDR Concierge, Research Recon, and QA Auditor in sequence.",
+  "status": "active",
+  "configuration": {
+    "trigger": {
+      "type": "webhook",
+      "endpoint": "/api/v1/workflows/lead-qualification/trigger",
+      "events": ["lead.created", "form.submitted", "email.received"],
+      "description": "Triggered when new inbound lead is captured"
+    },
+    "agents": [
+      {
+        "agent_id": "bdr-concierge",
+        "step": 1,
+        "name": "Initial Qualification",
+        "description": "Extract lead data, search for duplicates, apply BANT scoring"
+      },
+      {
+        "agent_id": "research-recon",
+        "step": 2,
+        "name": "Company Enrichment",
+        "description": "Research company background and enrich CRM data",
+        "conditional": "{{step1.qualification_score}} >= 50"
+      },
+      {
+        "agent_id": "bdr-concierge",
+        "step": 3,
+        "name": "Final Decision & Booking",
+        "description": "Book meeting if qualified or add to nurture"
+      },
+      {
+        "agent_id": "qa-auditor",
+        "step": 4,
+        "name": "Quality Validation",
+        "description": "Validate qualification quality and data completeness"
+      }
+    ],
+    "variable_passing": {
+      "step1_to_step2": {
+        "description": "Pass lead and qualification context to Research Recon",
+        "variables": {
+          "company_name": "{{step1.output.company}}",
+          "company_domain": "{{step1.output.domain}}",
+          "contact_id": "{{step1.output.contact_id}}",
+          "initial_score": "{{step1.output.qualification_score}}",
+          "research_type": "company_profile"
+        }
+      },
+      "step2_to_step3": {
+        "description": "Pass enrichment data back to BDR for final decision",
+        "variables": {
+          "enrichment_data": "{{step2.output.findings}}",
+          "company_size": "{{step2.output.findings.employees}}",
+          "tech_stack": "{{step2.output.findings.technology_stack}}",
+          "recent_funding": "{{step2.output.findings.funding}}",
+          "contact_id": "{{step1.output.contact_id}}",
+          "qualification_score": "{{step1.output.qualification_score}}"
+        }
+      },
+      "step3_to_step4": {
+        "description": "Pass final output to QA for validation",
+        "variables": {
+          "agent_id": "bdr-concierge",
+          "operation": "validate_output",
+          "output_data": "{{step3.output}}",
+          "context": {
+            "qualification_score": "{{step1.output.qualification_score}}",
+            "meeting_booked": "{{step3.output.meeting_booked}}",
+            "crm_updated": true
+          }
+        }
+      }
+    },
+    "execution_flow": {
+      "step1": {
+        "agent": "bdr-concierge",
+        "input_mapping": {
+          "lead_email": "{{trigger.email}}",
+          "lead_name": "{{trigger.name}}",
+          "company": "{{trigger.company}}",
+          "message": "{{trigger.message}}",
+          "lead_source": "{{trigger.source}}",
+          "phone": "{{trigger.phone}}",
+          "title": "{{trigger.title}}"
+        },
+        "timeout_seconds": 120,
+        "retry_policy": {
+          "max_attempts": 3,
+          "backoff_multiplier": 2
+        },
+        "on_success": "proceed_to_step2_if_qualified",
+        "on_failure": "escalate_to_human"
+      },
+      "step2": {
+        "agent": "research-recon",
+        "condition": "{{step1.output.qualification_score}} >= 50",
+        "input_mapping": {
+          "research_type": "company_profile",
+          "company_name": "{{step1.output.company}}",
+          "company_domain": "{{step1.output.domain}}",
+          "depth": "quick"
+        },
+        "timeout_seconds": 300,
+        "retry_policy": {
+          "max_attempts": 2,
+          "backoff_multiplier": 2
+        },
+        "on_success": "proceed_to_step3",
+        "on_failure": "proceed_to_step3_without_enrichment",
+        "skip_if_condition_false": true
+      },
+      "step3": {
+        "agent": "bdr-concierge",
+        "input_mapping": {
+          "operation": "finalize_qualification",
+          "contact_id": "{{step1.output.contact_id}}",
+          "enrichment_data": "{{step2.output.findings}}",
+          "qualification_score": "{{step1.output.qualification_score}}",
+          "book_meeting_if_qualified": true
+        },
+        "timeout_seconds": 120,
+        "retry_policy": {
+          "max_attempts": 3,
+          "backoff_multiplier": 2
+        },
+        "on_success": "proceed_to_step4",
+        "on_failure": "escalate_to_human"
+      },
+      "step4": {
+        "agent": "qa-auditor",
+        "input_mapping": {
+          "operation": "validate_output",
+          "agent_id": "bdr-concierge",
+          "output_data": "{{step3.output}}",
+          "context": {
+            "workflow": "lead-qualification",
+            "qualification_score": "{{step1.output.qualification_score}}",
+            "enrichment_performed": "{{step2.executed}}"
+          }
+        },
+        "timeout_seconds": 30,
+        "retry_policy": {
+          "max_attempts": 1
+        },
+        "on_success": "complete_workflow",
+        "on_failure": "complete_with_warning"
+      }
+    },
+    "human_approval_gates": [
+      {
+        "gate_id": "high_value_lead_approval",
+        "position": "before_step3",
+        "condition": "{{step1.output.qualification_score}} >= 90 OR {{step2.output.findings.annual_revenue}} >= 10000000",
+        "approval_required_from": "sales_manager",
+        "timeout_hours": 4,
+        "on_timeout": "auto_approve",
+        "notification": {
+          "channels": ["email", "slack"],
+          "message": "High-value lead requires approval: {{step1.output.company}} (Score: {{step1.output.qualification_score}})"
+        }
+      }
+    ],
+    "escalation_conditions": [
+      {
+        "condition": "{{step1.status}} == 'escalated'",
+        "action": "create_task",
+        "assign_to": "sales_manager",
+        "priority": "high",
+        "message": "Lead qualification requires manual review: {{step1.output.reasoning}}"
+      },
+      {
+        "condition": "{{step3.output.meeting_booked}} == false AND {{step1.output.qualification_score}} >= 70",
+        "action": "notify",
+        "channels": ["slack"],
+        "message": "Qualified lead but failed to book meeting: {{step1.output.company}}"
+      },
+      {
+        "condition": "{{step4.output.validation_result}} == 'blocked'",
+        "action": "halt_workflow",
+        "notify": "engineering_team",
+        "message": "Quality validation failed for lead qualification"
+      }
+    ],
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "workflow_status": {
+          "type": "string",
+          "enum": ["completed", "escalated", "failed", "pending_approval"]
+        },
+        "lead_status": {
+          "type": "string",
+          "enum": ["qualified_meeting_booked", "qualified_pending", "unqualified_nurture", "escalated"]
+        },
+        "qualification_score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "contact_id": {
+          "type": "string"
+        },
+        "meeting_details": {
+          "type": "object"
+        },
+        "enrichment_summary": {
+          "type": "object"
+        },
+        "qa_score": {
+          "type": "number"
+        },
+        "steps_completed": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "total_cost": {
+          "type": "number"
+        },
+        "duration_seconds": {
+          "type": "integer"
+        }
+      }
+    }
+  },
+  "performance": {
+    "sla": {
+      "total_workflow_time_minutes": 15,
+      "step1_time_minutes": 5,
+      "step2_time_minutes": 5,
+      "step3_time_minutes": 3,
+      "step4_time_minutes": 2
+    },
+    "cost_budget": {
+      "per_workflow": 6.00,
+      "breakdown": {
+        "step1_bdr": 0.50,
+        "step2_research": 5.00,
+        "step3_bdr": 0.40,
+        "step4_qa": 0.10
+      }
+    },
+    "success_criteria": {
+      "all_steps_complete": true,
+      "qa_score_minimum": 7.0,
+      "no_critical_errors": true
+    }
+  },
+  "monitoring": {
+    "metrics": [
+      "workflow_completion_rate",
+      "average_duration",
+      "step_failure_rate",
+      "meeting_booking_rate",
+      "qa_pass_rate",
+      "cost_per_lead"
+    ],
+    "alerts": [
+      {
+        "type": "workflow_timeout",
+        "condition": "duration > sla.total_workflow_time",
+        "channel": "slack"
+      },
+      {
+        "type": "step_failure",
+        "condition": "any_step.status == failed",
+        "channel": "email"
+      },
+      {
+        "type": "qa_failure",
+        "condition": "step4.qa_score < 6.0",
+        "channel": "slack",
+        "priority": "high"
+      }
+    ]
+  },
+  "error_handling": {
+    "step1_failure": {
+      "action": "escalate_to_human",
+      "notify": "sales_manager",
+      "preserve_lead_data": true
+    },
+    "step2_failure": {
+      "action": "continue_without_enrichment",
+      "note": "Research can be performed manually later"
+    },
+    "step3_failure": {
+      "action": "escalate_to_human",
+      "notify": "sales_manager",
+      "preserve_partial_results": true
+    },
+    "step4_failure": {
+      "action": "complete_with_warning",
+      "note": "QA validation failed but lead processing completed"
+    }
+  },
+  "testing": {
+    "test_scenarios": [
+      {
+        "name": "Standard Qualified Lead",
+        "input": {
+          "email": "john.doe@acme.com",
+          "name": "John Doe",
+          "company": "Acme Corp",
+          "message": "Interested in enterprise plan, have $50K budget, need ASAP",
+          "source": "website"
+        },
+        "expected_outcome": {
+          "workflow_status": "completed",
+          "lead_status": "qualified_meeting_booked",
+          "qualification_score": {"min": 70, "max": 100},
+          "meeting_booked": true
+        }
+      },
+      {
+        "name": "Unqualified Lead - Low Budget",
+        "input": {
+          "email": "jane@startup.com",
+          "name": "Jane Smith",
+          "company": "Early Stage Startup",
+          "message": "Just exploring options, very early stage",
+          "source": "website"
+        },
+        "expected_outcome": {
+          "workflow_status": "completed",
+          "lead_status": "unqualified_nurture",
+          "qualification_score": {"max": 69},
+          "meeting_booked": false
+        }
+      },
+      {
+        "name": "High-Value Lead Requiring Approval",
+        "input": {
+          "email": "ceo@fortune500.com",
+          "name": "Sarah Johnson",
+          "company": "Fortune 500 Company",
+          "title": "CEO",
+          "message": "Want to discuss enterprise deployment for 10,000 users",
+          "source": "referral"
+        },
+        "expected_outcome": {
+          "workflow_status": "pending_approval",
+          "qualification_score": {"min": 90},
+          "approval_gate_triggered": true
+        }
+      }
+    ]
+  },
+  "metadata": {
+    "created_at": "2025-10-31T00:00:00Z",
+    "updated_at": "2025-10-31T00:00:00Z",
+    "created_by": "system",
+    "tags": ["sales", "lead-qualification", "bant", "multi-agent"],
+    "squad": "sales-squad",
+    "phase": "phase-1",
+    "relevance_workforce_compatible": true
+  }
+}

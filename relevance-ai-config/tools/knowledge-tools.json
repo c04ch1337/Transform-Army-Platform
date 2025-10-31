@@ -1,0 +1,636 @@
+{
+  "tool_category": "knowledge",
+  "description": "Knowledge base integration tools for document indexing, semantic search, and content management via the adapter service and Relevance AI Knowledge tables",
+  "adapter_base_url": "{{ADAPTER_SERVICE_URL}}",
+  "version": "1.0.0",
+  "tools": [
+    {
+      "tool_id": "knowledge_search",
+      "name": "Search Knowledge Base",
+      "description": "Perform semantic search across the knowledge base using RAG. Returns relevant articles with confidence scores and snippets.",
+      "http_config": {
+        "method": "POST",
+        "endpoint": "/api/v1/knowledge/search",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 30
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "correlation_id": {
+            "type": "string",
+            "description": "Correlation ID for request tracing"
+          },
+          "query": {
+            "type": "object",
+            "required": ["text"],
+            "properties": {
+              "text": {
+                "type": "string",
+                "description": "Search query text (semantic or keyword)"
+              },
+              "filters": {
+                "type": "object",
+                "properties": {
+                  "categories": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Filter by categories"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Filter by tags (any match)"
+                  },
+                  "languages": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Filter by language codes"
+                  },
+                  "published_only": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "updated_after": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Only articles updated after date"
+                  }
+                }
+              },
+              "options": {
+                "type": "object",
+                "properties": {
+                  "max_results": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 10
+                  },
+                  "min_score": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.7,
+                    "description": "Minimum relevance score threshold"
+                  },
+                  "include_snippets": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "highlight_matches": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "required": ["query"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "description": "Search results with scores and snippets",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {"type": "string"},
+                "title": {"type": "string"},
+                "url": {"type": "string"},
+                "score": {"type": "number"},
+                "snippet": {"type": "string"},
+                "category": {"type": "string"},
+                "tags": {"type": "array"}
+              }
+            }
+          },
+          "total_results": {"type": "integer"},
+          "query_duration_ms": {"type": "integer"}
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 3,
+        "backoff_multiplier": 2
+      }
+    },
+    {
+      "tool_id": "knowledge_create_article",
+      "name": "Create Knowledge Article",
+      "description": "Create a new article in the knowledge base with automatic vectorization for semantic search.",
+      "http_config": {
+        "method": "POST",
+        "endpoint": "/api/v1/knowledge/articles",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 60
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "idempotency_key": {
+            "type": "string",
+            "description": "Unique key for idempotent operation"
+          },
+          "correlation_id": {
+            "type": "string",
+            "description": "Correlation ID for request tracing"
+          },
+          "article": {
+            "type": "object",
+            "required": ["title", "content"],
+            "properties": {
+              "title": {"type": "string", "description": "Article title"},
+              "content": {"type": "string", "description": "Article content (markdown supported)"},
+              "category": {"type": "string", "description": "Article category"},
+              "tags": {"type": "array", "items": {"type": "string"}},
+              "metadata": {
+                "type": "object",
+                "properties": {
+                  "author": {"type": "string"},
+                  "version": {"type": "string"},
+                  "language": {"type": "string", "default": "en"}
+                }
+              },
+              "parent_id": {"type": "string", "description": "Parent document ID"},
+              "related_ids": {"type": "array", "items": {"type": "string"}}
+            }
+          },
+          "options": {
+            "type": "object",
+            "properties": {
+              "auto_vectorize": {"type": "boolean", "default": true},
+              "publish": {"type": "boolean", "default": false},
+              "update_if_exists": {"type": "boolean", "default": true}
+            }
+          }
+        },
+        "required": ["article"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "article_id": {"type": "string"},
+          "article": {"type": "object"},
+          "url": {"type": "string"},
+          "published": {"type": "boolean"}
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 3,
+        "backoff_multiplier": 2
+      }
+    },
+    {
+      "tool_id": "knowledge_update_article",
+      "name": "Update Knowledge Article",
+      "description": "Update an existing knowledge base article. Regenerates embeddings if content changes.",
+      "http_config": {
+        "method": "PUT",
+        "endpoint": "/api/v1/knowledge/articles/{article_id}",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 60
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "article_id": {
+            "type": "string",
+            "description": "Article ID to update"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "description": "Unique key for idempotent operation"
+          },
+          "correlation_id": {
+            "type": "string",
+            "description": "Correlation ID for request tracing"
+          },
+          "updates": {
+            "type": "object",
+            "description": "Fields to update",
+            "properties": {
+              "title": {"type": "string"},
+              "content": {"type": "string"},
+              "category": {"type": "string"},
+              "tags": {"type": "array", "items": {"type": "string"}},
+              "metadata": {"type": "object"},
+              "published": {"type": "boolean"}
+            }
+          },
+          "regenerate_embeddings": {
+            "type": "boolean",
+            "default": true,
+            "description": "Regenerate vector embeddings"
+          }
+        },
+        "required": ["article_id", "updates"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "article": {"type": "object"},
+          "updated_fields": {"type": "array"},
+          "embeddings_regenerated": {"type": "boolean"}
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 3,
+        "backoff_multiplier": 2
+      }
+    },
+    {
+      "tool_id": "knowledge_list_articles",
+      "name": "List Knowledge Articles",
+      "description": "List articles in the knowledge base with filtering and sorting options.",
+      "http_config": {
+        "method": "POST",
+        "endpoint": "/api/v1/knowledge/articles/list",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 30
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "description": "Filter by category"
+          },
+          "tags": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Filter by tags (all must match)"
+          },
+          "published_only": {
+            "type": "boolean",
+            "default": true
+          },
+          "language": {
+            "type": "string",
+            "description": "Filter by language code"
+          },
+          "sort_by": {
+            "type": "string",
+            "enum": ["title", "created_at", "updated_at", "view_count"],
+            "default": "updated_at"
+          },
+          "sort_order": {
+            "type": "string",
+            "enum": ["asc", "desc"],
+            "default": "desc"
+          },
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "page": {"type": "integer", "default": 1},
+              "page_size": {"type": "integer", "default": 50}
+            }
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "documents": {"type": "array", "description": "List of documents"},
+          "pagination": {"type": "object", "description": "Pagination metadata"}
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 3,
+        "backoff_multiplier": 2
+      }
+    },
+    {
+      "tool_id": "knowledge_get_article",
+      "name": "Get Knowledge Article",
+      "description": "Retrieve complete content of a specific knowledge base article by ID.",
+      "http_config": {
+        "method": "GET",
+        "endpoint": "/api/v1/knowledge/articles/{article_id}",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 30
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "article_id": {
+            "type": "string",
+            "description": "Article ID to retrieve"
+          },
+          "include_metadata": {
+            "type": "boolean",
+            "default": true,
+            "description": "Include full metadata"
+          }
+        },
+        "required": ["article_id"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "article": {
+            "type": "object",
+            "description": "Complete article object"
+          }
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 3,
+        "backoff_multiplier": 2
+      }
+    },
+    {
+      "tool_id": "knowledge_track_feedback",
+      "name": "Track Article Feedback",
+      "description": "Record user feedback on article helpfulness (helpful/not helpful votes).",
+      "http_config": {
+        "method": "POST",
+        "endpoint": "/api/v1/knowledge/articles/{article_id}/feedback",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 10
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "article_id": {
+            "type": "string",
+            "description": "Article ID"
+          },
+          "feedback": {
+            "type": "object",
+            "required": ["helpful"],
+            "properties": {
+              "helpful": {"type": "boolean", "description": "Was this article helpful?"},
+              "comment": {"type": "string", "description": "Optional feedback comment"},
+              "user_id": {"type": "string", "description": "User who provided feedback"}
+            }
+          }
+        },
+        "required": ["article_id", "feedback"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "feedback_recorded": {"type": "boolean"},
+          "updated_stats": {
+            "type": "object",
+            "properties": {
+              "helpful_votes": {"type": "integer"},
+              "unhelpful_votes": {"type": "integer"},
+              "helpfulness_ratio": {"type": "number"}
+            }
+          }
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 2,
+        "backoff_multiplier": 2
+      }
+    },
+    {
+      "tool_id": "knowledge_flag_gap",
+      "name": "Flag Knowledge Gap",
+      "description": "Report a knowledge gap when documentation is missing or inadequate for a common question or issue.",
+      "http_config": {
+        "method": "POST",
+        "endpoint": "/api/v1/knowledge/gaps",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 10
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "correlation_id": {
+            "type": "string",
+            "description": "Correlation ID for request tracing"
+          },
+          "gap": {
+            "type": "object",
+            "required": ["topic", "description"],
+            "properties": {
+              "topic": {"type": "string", "description": "Topic area with gap"},
+              "description": {"type": "string", "description": "Description of missing content"},
+              "source": {
+                "type": "string",
+                "enum": ["search", "ticket", "agent_escalation", "user_feedback"],
+                "description": "How gap was identified"
+              },
+              "frequency": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "How many times this gap has been encountered"
+              },
+              "severity": {
+                "type": "string",
+                "enum": ["high", "medium", "low"],
+                "description": "Impact severity"
+              },
+              "example_query": {
+                "type": "string",
+                "description": "Example search query or question"
+              },
+              "related_ticket_ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Related support tickets"
+              }
+            }
+          }
+        },
+        "required": ["gap"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "gap_id": {"type": "string"},
+          "status": {"type": "string"},
+          "priority_assigned": {"type": "string"}
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 2,
+        "backoff_multiplier": 2
+      }
+    },
+    {
+      "tool_id": "document_parse",
+      "name": "Parse Document",
+      "description": "Extract text content from various file formats (PDF, DOCX, etc.) for indexing into knowledge base.",
+      "http_config": {
+        "method": "POST",
+        "endpoint": "/api/v1/knowledge/parse",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 60
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "document": {
+            "type": "object",
+            "properties": {
+              "url": {"type": "string", "description": "URL to document"},
+              "content": {"type": "string", "description": "Base64-encoded document content"},
+              "filename": {"type": "string", "description": "Original filename"},
+              "content_type": {"type": "string", "description": "MIME type"}
+            }
+          },
+          "options": {
+            "type": "object",
+            "properties": {
+              "extract_metadata": {"type": "boolean", "default": true},
+              "chunk_content": {"type": "boolean", "default": true},
+              "chunk_size": {"type": "integer", "default": 1000}
+            }
+          }
+        },
+        "required": ["document"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "text": {"type": "string", "description": "Extracted text content"},
+          "chunks": {"type": "array", "description": "Chunked content if requested"},
+          "metadata": {"type": "object", "description": "Extracted metadata"},
+          "page_count": {"type": "integer"}
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 2,
+        "backoff_multiplier": 2
+      }
+    },
+    {
+      "tool_id": "analytics_searches",
+      "name": "Analyze Search Queries",
+      "description": "Analyze knowledge base search patterns to identify gaps and optimize content.",
+      "http_config": {
+        "method": "POST",
+        "endpoint": "/api/v1/knowledge/analytics/searches",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 30
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "time_range": {
+            "type": "object",
+            "properties": {
+              "start": {"type": "string", "format": "date-time"},
+              "end": {"type": "string", "format": "date-time"}
+            }
+          },
+          "filters": {
+            "type": "object",
+            "properties": {
+              "no_results_only": {"type": "boolean", "description": "Only failed searches"},
+              "low_confidence_only": {"type": "boolean", "description": "Only low-confidence results"}
+            }
+          },
+          "group_by": {
+            "type": "string",
+            "enum": ["topic", "category", "date"],
+            "default": "topic"
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "total_searches": {"type": "integer"},
+          "no_result_searches": {"type": "integer"},
+          "common_queries": {"type": "array"},
+          "gap_candidates": {"type": "array"}
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 3,
+        "backoff_multiplier": 2
+      }
+    }
+  ],
+  "configuration": {
+    "provider_mapping": {
+      "relevance_knowledge": {
+        "enabled": true,
+        "credentials_key": "RELEVANCE_API_KEY",
+        "table_prefix": "kb_"
+      },
+      "pinecone": {
+        "enabled": false,
+        "credentials_key": "PINECONE_API_KEY",
+        "note": "Phase 3+ vector database"
+      }
+    },
+    "rate_limits": {
+      "requests_per_minute": 60,
+      "concurrent_requests": 10,
+      "indexing_per_hour": 100
+    },
+    "search_config": {
+      "default_max_results": 10,
+      "default_min_score": 0.70,
+      "semantic_weight": 0.7,
+      "keyword_weight": 0.3,
+      "recency_boost": true,
+      "popularity_boost": true
+    },
+    "vectorization": {
+      "model": "text-embedding-ada-002",
+      "chunk_size": 1000,
+      "chunk_overlap": 200,
+      "batch_size": 100
+    }
+  },
+  "metadata": {
+    "created_at": "2025-10-31T00:00:00Z",
+    "updated_at": "2025-10-31T00:00:00Z",
+    "version": "1.0.0"
+  }
+}

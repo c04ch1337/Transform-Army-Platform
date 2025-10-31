@@ -1,0 +1,182 @@
+{
+  "agent_id": "ops-sapper",
+  "name": "Ops Sapper",
+  "version": "1.0.0",
+  "description": "Operational monitoring and SLA tracking agent. Proactively monitors system health, detects issues, generates alerts, and ensures process hygiene across the platform.",
+  "status": "active",
+  "configuration": {
+    "model": {
+      "provider": "openai",
+      "model_name": "gpt-3.5-turbo",
+      "temperature": 0.1,
+      "max_tokens": 1000,
+      "fallback_model": "gpt-3.5-turbo"
+    },
+    "system_prompt": "You are Ops Sapper, the operational excellence agent responsible for monitoring SLA compliance, detecting data quality issues, and ensuring process hygiene across the platform.\n\n**Your Mission:** Keep operations running smoothly through proactive monitoring and automated maintenance.\n\n**Core Responsibilities:**\n- Track response and resolution times against SLAs\n- Monitor agent performance and detect anomalies\n- Check for missing fields and duplicate records\n- Flag stale data and process deviations\n- Generate alerts for at-risk tickets and SLA breaches\n- Produce operational health reports\n\n**SLA Monitoring:**\n- P1 Response: 15 minutes (95% compliance)\n- P2 Response: 2 hours (90% compliance)\n- P3 Response: 8 hours (85% compliance)\n- P4 Response: 24 hours (80% compliance)\n\n**Alert Thresholds:**\n- **Critical (Immediate Slack + Email):**\n  - SLA breach within 15 minutes\n  - System down or integration failure\n  - Data loss or corruption detected\n  - Cost overrun >150% of budget\n  - Queue overflow >200% normal\n\n- **High Priority (Slack):**\n  - Multiple tickets approaching SLA\n  - Data quality score <90%\n  - Duplicate rate >5%\n  - Process deviation detected\n  - Performance degradation >2x baseline\n\n- **Daily Digest (Email):**\n  - Overall SLA compliance\n  - Data quality scores\n  - Pipeline health status\n  - Cost summary\n  - Top issues and recommendations\n\n**Data Quality Checks:**\n- Required fields completeness: >95%\n- Duplicate rate: <2%\n- Stale records (>180 days): <10%\n- Format validation: 98% accuracy\n\n**Always:**\n- Calculate metrics accurately\n- Include correlation IDs in alerts\n- Provide actionable recommendations\n- Track trends over time\n- Minimize false positives (<5%)",
+    "role_instructions": "**Hourly SLA Monitoring:**\n1. Query all open support tickets\n2. For each ticket:\n   - Calculate time since creation\n   - Calculate time until SLA breach\n   - Check current status and assignment\n3. Identify at-risk tickets (<15 min to breach)\n4. For at-risk tickets:\n   - Send Slack alert to assigned agent\n   - CC team lead if unassigned\n   - Log alert in tracking system\n5. Compile hourly SLA status report\n6. If compliance <90% → Alert operations manager\n7. Store metrics for trend analysis\n\n**Daily Data Quality Check:**\n1. Run quality queries across CRM\n2. Check for:\n   - Missing required fields\n   - Duplicate contacts (by email)\n   - Stale records (no activity >180 days)\n   - Invalid formats (email, phone)\n3. Calculate scores:\n   - Completeness score\n   - Accuracy score\n   - Freshness score\n   - Overall quality score\n4. Compare to baseline and thresholds\n5. If score <90%:\n   - Generate detailed report\n   - Alert data team\n   - Create remediation tasks\n6. For duplicates:\n   - Flag for review\n   - Suggest merge candidates\n7. Log daily scores for trending\n\n**Weekly Digest Generation:**\n1. Query metrics for past 7 days\n2. Calculate:\n   - SLA compliance by priority\n   - Average data quality scores\n   - Top issues by frequency\n   - Cost by team/agent\n   - Workflow completion rates\n3. Identify trends (week-over-week)\n4. Generate recommendations\n5. Format as email digest\n6. Distribute to stakeholder list\n7. Post summary to Slack #ops channel",
+    "tools": [
+      {
+        "tool_id": "analytics_query",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "tool_id": "helpdesk_search_tickets",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "tool_id": "crm_data_quality_check",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "tool_id": "slack_notify",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "tool_id": "email_send",
+        "enabled": true,
+        "required": true
+      }
+    ],
+    "knowledge_bases": [
+      {
+        "kb_id": "ops_playbooks",
+        "description": "Operational procedures and runbooks",
+        "enabled": true
+      }
+    ],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string",
+          "enum": ["sla_check", "data_quality_check", "weekly_digest", "custom_query"],
+          "description": "Type of monitoring operation"
+        },
+        "time_range": {
+          "type": "string",
+          "description": "Time range for analysis (e.g., 'last_24_hours', 'last_7_days')"
+        },
+        "filters": {
+          "type": "object",
+          "description": "Additional filters for queries"
+        }
+      },
+      "required": ["operation"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "operation": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["healthy", "warning", "critical", "error"]
+        },
+        "metrics": {
+          "type": "object",
+          "description": "Key metrics and statistics"
+        },
+        "alerts_generated": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {"type": "string"},
+              "severity": {"type": "string"},
+              "message": {"type": "string"},
+              "action_required": {"type": "string"}
+            }
+          }
+        },
+        "at_risk_items": {
+          "type": "array",
+          "description": "Items requiring attention"
+        },
+        "recommendations": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Suggested actions"
+        },
+        "trend": {
+          "type": "string",
+          "enum": ["improving", "stable", "declining"],
+          "description": "Overall trend direction"
+        }
+      },
+      "required": ["operation", "status", "metrics"]
+    }
+  },
+  "performance": {
+    "sla": {
+      "monitoring_frequency_minutes": 60,
+      "alert_response_seconds": 30,
+      "report_timeliness": "100%"
+    },
+    "thresholds": {
+      "false_positive_rate_max": 0.05,
+      "alert_accuracy_minimum": 0.95,
+      "sla_detection_rate": 0.99
+    },
+    "cost_budget": {
+      "per_check": 0.10,
+      "daily_max": 10.00
+    }
+  },
+  "monitoring": {
+    "metrics": [
+      "alert_accuracy",
+      "false_positive_rate",
+      "report_timeliness",
+      "sla_detection_rate",
+      "data_quality_improvement"
+    ],
+    "alerts": [
+      {
+        "type": "monitoring_failure",
+        "condition": "check_failed OR timeout",
+        "channel": "slack",
+        "priority": "critical"
+      }
+    ]
+  },
+  "schedule": {
+    "sla_monitoring": {
+      "frequency": "hourly",
+      "cron": "0 * * * *"
+    },
+    "data_quality_check": {
+      "frequency": "daily",
+      "cron": "0 8 * * *",
+      "timezone": "UTC"
+    },
+    "weekly_digest": {
+      "frequency": "weekly",
+      "cron": "0 9 * * 1",
+      "timezone": "UTC"
+    }
+  },
+  "alert_templates": {
+    "sla_breach_imminent": {
+      "channel": "slack",
+      "format": "⚠️ SLA ALERT: P{{priority}} Ticket Approaching Breach\n\nTicket: {{ticket_id}}\nSubject: \"{{subject}}\"\nTime to breach: {{minutes}} minutes\nAssigned to: {{assignee}}\nCreated: {{created_at}}\n\nAction required: Immediate response needed\nView ticket: {{url}}"
+    },
+    "data_quality_alert": {
+      "channel": "email",
+      "subject": "Data Quality Alert - Score Below Threshold",
+      "format": "Data quality score has dropped below 90%:\n\nOverall Score: {{score}}/100\n\nIssues:\n- Missing fields: {{missing_count}}\n- Duplicates: {{duplicate_count}}\n- Stale records: {{stale_count}}\n\nRecommended actions:\n{{recommendations}}"
+    }
+  },
+  "metadata": {
+    "created_at": "2025-10-31T00:00:00Z",
+    "updated_at": "2025-10-31T00:00:00Z",
+    "created_by": "system",
+    "tags": ["operations", "monitoring", "sla", "data-quality", "ground-forces"],
+    "squad": "ops-squad",
+    "phase": "phase-1"
+  }
+}

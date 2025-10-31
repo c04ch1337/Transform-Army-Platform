@@ -1,0 +1,366 @@
+{
+  "tool_category": "helpdesk",
+  "description": "Helpdesk integration tools for ticket management, comments, and support operations across Zendesk, Intercom, Freshdesk, and other providers via the adapter service",
+  "adapter_base_url": "{{ADAPTER_SERVICE_URL}}",
+  "version": "1.0.0",
+  "tools": [
+    {
+      "tool_id": "helpdesk_read_ticket",
+      "name": "Read Helpdesk Ticket",
+      "description": "Retrieve full details of a specific helpdesk ticket including conversation history, attachments, and metadata.",
+      "http_config": {
+        "method": "GET",
+        "endpoint": "/api/v1/helpdesk/tickets/{ticket_id}",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 30
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "description": "Helpdesk ticket ID to retrieve"
+          },
+          "include_comments": {
+            "type": "boolean",
+            "description": "Include comment history",
+            "default": true
+          }
+        },
+        "required": ["ticket_id"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "ticket": {
+            "type": "object",
+            "description": "Complete ticket object with all details"
+          },
+          "comments": {
+            "type": "array",
+            "description": "Ticket comment history"
+          }
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 3,
+        "backoff_multiplier": 2
+      }
+    },
+    {
+      "tool_id": "helpdesk_create_ticket",
+      "name": "Create Helpdesk Ticket",
+      "description": "Create a new support ticket in the helpdesk system with optional auto-assignment.",
+      "http_config": {
+        "method": "POST",
+        "endpoint": "/api/v1/helpdesk/tickets",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 30
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "idempotency_key": {
+            "type": "string",
+            "description": "Unique key for idempotent operation"
+          },
+          "correlation_id": {
+            "type": "string",
+            "description": "Correlation ID for request tracing"
+          },
+          "ticket": {
+            "type": "object",
+            "required": ["subject", "description", "requester"],
+            "properties": {
+              "subject": {"type": "string", "description": "Ticket subject"},
+              "description": {"type": "string", "description": "Ticket description/body"},
+              "requester": {
+                "type": "object",
+                "required": ["email"],
+                "properties": {
+                  "email": {"type": "string", "format": "email"},
+                  "name": {"type": "string"},
+                  "phone": {"type": "string"}
+                }
+              },
+              "priority": {
+                "type": "string",
+                "enum": ["urgent", "high", "medium", "low"]
+              },
+              "status": {
+                "type": "string",
+                "enum": ["new", "open", "pending", "solved", "closed"],
+                "default": "new"
+              },
+              "tags": {"type": "array", "items": {"type": "string"}},
+              "assignee_id": {"type": "string"},
+              "group_id": {"type": "string"},
+              "custom_fields": {"type": "object"}
+            }
+          },
+          "options": {
+            "type": "object",
+            "properties": {
+              "send_notification": {"type": "boolean", "default": true},
+              "auto_assign": {"type": "boolean", "default": false}
+            }
+          }
+        },
+        "required": ["ticket"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "ticket_id": {"type": "string"},
+          "ticket_number": {"type": "string"},
+          "ticket": {"type": "object"},
+          "url": {"type": "string"}
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 3,
+        "backoff_multiplier": 2
+      }
+    },
+    {
+      "tool_id": "helpdesk_update_ticket",
+      "name": "Update Helpdesk Ticket",
+      "description": "Update an existing helpdesk ticket status, priority, assignment, or other fields.",
+      "http_config": {
+        "method": "PUT",
+        "endpoint": "/api/v1/helpdesk/tickets/{ticket_id}",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 30
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "description": "Ticket ID to update"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "description": "Unique key for idempotent operation"
+          },
+          "correlation_id": {
+            "type": "string",
+            "description": "Correlation ID for request tracing"
+          },
+          "updates": {
+            "type": "object",
+            "description": "Fields to update",
+            "properties": {
+              "status": {"type": "string", "enum": ["new", "open", "pending", "solved", "closed"]},
+              "priority": {"type": "string", "enum": ["urgent", "high", "medium", "low"]},
+              "assignee_id": {"type": "string"},
+              "group_id": {"type": "string"},
+              "tags": {"type": "array", "items": {"type": "string"}},
+              "custom_fields": {"type": "object"}
+            }
+          },
+          "resolution": {
+            "type": "string",
+            "description": "Resolution notes when closing ticket"
+          }
+        },
+        "required": ["ticket_id", "updates"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "ticket": {"type": "object"},
+          "updated_fields": {"type": "array"}
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 3,
+        "backoff_multiplier": 2
+      }
+    },
+    {
+      "tool_id": "helpdesk_add_comment",
+      "name": "Add Comment to Ticket",
+      "description": "Add a comment or reply to a helpdesk ticket. Can be public (visible to requester) or private (internal only).",
+      "http_config": {
+        "method": "POST",
+        "endpoint": "/api/v1/helpdesk/tickets/{ticket_id}/comments",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 30
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "description": "Ticket ID to add comment to"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "description": "Unique key for idempotent operation"
+          },
+          "correlation_id": {
+            "type": "string",
+            "description": "Correlation ID for request tracing"
+          },
+          "comment": {
+            "type": "object",
+            "required": ["body", "author"],
+            "properties": {
+              "body": {"type": "string", "description": "Comment body/content"},
+              "is_public": {"type": "boolean", "default": true, "description": "Visible to requester"},
+              "author": {
+                "type": "object",
+                "required": ["type", "id"],
+                "properties": {
+                  "type": {"type": "string", "description": "Author type (agent, customer, system)"},
+                  "id": {"type": "string", "description": "Author identifier"}
+                }
+              },
+              "attachments": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        },
+        "required": ["ticket_id", "comment"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "comment_id": {"type": "string"},
+          "created_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 3,
+        "backoff_multiplier": 2
+      }
+    },
+    {
+      "tool_id": "helpdesk_search_tickets",
+      "name": "Search Helpdesk Tickets",
+      "description": "Search for tickets by status, priority, assignee, tags, date range, or text query.",
+      "http_config": {
+        "method": "POST",
+        "endpoint": "/api/v1/helpdesk/tickets/search",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 30
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["new", "open", "pending", "solved", "closed"]},
+            "description": "Filter by status"
+          },
+          "priority": {
+            "type": "array",
+            "items": {"type": "string", "enum": ["urgent", "high", "medium", "low"]},
+            "description": "Filter by priority"
+          },
+          "assignee": {
+            "type": "string",
+            "description": "Filter by assignee ID"
+          },
+          "requester_email": {
+            "type": "string",
+            "format": "email",
+            "description": "Filter by requester email"
+          },
+          "tags": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Filter by tags (any match)"
+          },
+          "created_after": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Filter tickets created after date"
+          },
+          "created_before": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Filter tickets created before date"
+          },
+          "query": {
+            "type": "string",
+            "description": "Full-text search query"
+          },
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "page": {"type": "integer", "default": 1},
+              "page_size": {"type": "integer", "default": 50}
+            }
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "matches": {"type": "array", "description": "Array of matching tickets"},
+          "pagination": {"type": "object", "description": "Pagination metadata"}
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 3,
+        "backoff_multiplier": 2
+      }
+    }
+  ],
+  "configuration": {
+    "provider_mapping": {
+      "zendesk": {
+        "enabled": true,
+        "credentials_key": "ZENDESK_CREDENTIALS"
+      },
+      "intercom": {
+        "enabled": true,
+        "credentials_key": "INTERCOM_API_KEY"
+      },
+      "freshdesk": {
+        "enabled": true,
+        "credentials_key": "FRESHDESK_API_KEY"
+      }
+    },
+    "rate_limits": {
+      "requests_per_minute": 100,
+      "concurrent_requests": 10
+    },
+    "caching": {
+      "enabled": true,
+      "ttl_seconds": 180,
+      "cache_reads": true
+    }
+  },
+  "metadata": {
+    "created_at": "2025-10-31T00:00:00Z",
+    "updated_at": "2025-10-31T00:00:00Z",
+    "version": "1.0.0"
+  }
+}

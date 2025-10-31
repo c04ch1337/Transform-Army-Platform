@@ -1,0 +1,352 @@
+{
+  "workflow_id": "ops-monitoring-workflow",
+  "name": "Ops Monitoring Workflow",
+  "version": "1.0.0",
+  "description": "Scheduled workflow for operational monitoring, SLA checks, data quality validation, and alert generation. Uses Ops Sapper and QA Auditor to ensure platform health.",
+  "status": "active",
+  "configuration": {
+    "trigger": {
+      "type": "scheduled",
+      "schedule": {
+        "sla_check": {
+          "frequency": "hourly",
+          "cron": "0 * * * *",
+          "timezone": "UTC",
+          "description": "Run SLA monitoring every hour"
+        },
+        "data_quality_check": {
+          "frequency": "daily",
+          "cron": "0 8 * * *",
+          "timezone": "UTC",
+          "description": "Run data quality checks at 8 AM UTC daily"
+        },
+        "weekly_digest": {
+          "frequency": "weekly",
+          "cron": "0 9 * * 1",
+          "timezone": "UTC",
+          "description": "Generate weekly digest every Monday at 9 AM UTC"
+        }
+      },
+      "description": "Runs on automated schedule for proactive monitoring"
+    },
+    "agents": [
+      {
+        "agent_id": "ops-sapper",
+        "step": 1,
+        "name": "Execute Monitoring Checks",
+        "description": "Run SLA checks, data quality analysis, or digest generation based on schedule"
+      },
+      {
+        "agent_id": "qa-auditor",
+        "step": 2,
+        "name": "Validate Alert Accuracy",
+        "description": "Verify alerts are accurate and actionable before sending",
+        "conditional": "{{step1.output.alerts_generated.length}} > 0"
+      }
+    ],
+    "variable_passing": {
+      "step1_to_step2": {
+        "description": "Pass alerts to QA Auditor for validation",
+        "variables": {
+          "operation": "validate_output",
+          "agent_id": "ops-sapper",
+          "output_data": "{{step1.output}}",
+          "context": {
+            "monitoring_type": "{{step1.input.operation}}",
+            "alerts_count": "{{step1.output.alerts_generated.length}}",
+            "status": "{{step1.output.status}}"
+          }
+        }
+      }
+    },
+    "execution_flow": {
+      "step1": {
+        "agent": "ops-sapper",
+        "input_mapping": {
+          "operation": "{{trigger.operation}}",
+          "time_range": "{{trigger.time_range}}",
+          "filters": "{{trigger.filters}}"
+        },
+        "timeout_seconds": 300,
+        "retry_policy": {
+          "max_attempts": 2,
+          "backoff_multiplier": 2
+        },
+        "on_success": "proceed_to_step2_if_alerts",
+        "on_failure": "log_and_alert"
+      },
+      "step2": {
+        "agent": "qa-auditor",
+        "condition": "{{step1.output.alerts_generated.length}} > 0",
+        "input_mapping": {
+          "operation": "validate_output",
+          "agent_id": "ops-sapper",
+          "output_data": "{{step1.output}}",
+          "context": {
+            "validation_type": "alert_accuracy",
+            "expected_false_positive_rate": 0.05
+          }
+        },
+        "timeout_seconds": 30,
+        "retry_policy": {
+          "max_attempts": 1
+        },
+        "on_success": "send_validated_alerts",
+        "on_failure": "send_alerts_anyway",
+        "skip_if_condition_false": true
+      }
+    },
+    "alert_routing": {
+      "critical_alerts": {
+        "channels": ["slack", "email", "pagerduty"],
+        "recipients": {
+          "slack": "#ops-critical",
+          "email": "oncall@transform-army.ai",
+          "pagerduty": "ops-team"
+        },
+        "immediate": true
+      },
+      "high_priority_alerts": {
+        "channels": ["slack", "email"],
+        "recipients": {
+          "slack": "#ops-alerts",
+          "email": "ops-team@transform-army.ai"
+        },
+        "immediate": true
+      },
+      "daily_digest": {
+        "channels": ["email"],
+        "recipients": ["ops-manager@transform-army.ai", "cto@transform-army.ai"],
+        "schedule": "8:00 AM UTC"
+      },
+      "weekly_digest": {
+        "channels": ["email"],
+        "recipients": ["leadership-team@transform-army.ai"],
+        "schedule": "Monday 9:00 AM UTC"
+      }
+    },
+    "escalation_conditions": [
+      {
+        "condition": "{{step1.output.status}} == 'critical'",
+        "action": "page_oncall",
+        "service": "pagerduty",
+        "severity": "critical",
+        "message": "Critical operational issue detected: {{step1.output.metrics}}"
+      },
+      {
+        "condition": "{{step1.output.alerts_generated.length}} >= 10",
+        "action": "escalate",
+        "assign_to": "ops_manager",
+        "message": "Alert volume spike - potential systemic issue"
+      },
+      {
+        "condition": "{{step1.status}} == 'failed'",
+        "action": "alert",
+        "channels": ["slack"],
+        "message": "Ops monitoring workflow failed - manual intervention needed"
+      },
+      {
+        "condition": "{{step2.output.validation_result}} == 'blocked' AND {{step1.output.alerts_generated.length}} > 5",
+        "action": "review_required",
+        "assign_to": "engineering_team",
+        "message": "QA blocked multiple alerts - possible false positive pattern"
+      }
+    ],
+    "remediation_actions": {
+      "auto_remediate": {
+        "enabled": true,
+        "safe_actions": [
+          "reassign_orphaned_tickets",
+          "update_stale_timestamps",
+          "clear_expired_cache"
+        ],
+        "require_approval": [
+          "merge_duplicate_contacts",
+          "archive_old_tickets",
+          "delete_invalid_records"
+        ]
+      }
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "workflow_status": {
+          "type": "string",
+          "enum": ["completed", "failed", "partial"]
+        },
+        "monitoring_type": {
+          "type": "string",
+          "enum": ["sla_check", "data_quality", "weekly_digest"]
+        },
+        "overall_health": {
+          "type": "string",
+          "enum": ["healthy", "warning", "critical"]
+        },
+        "metrics": {
+          "type": "object",
+          "description": "Key operational metrics"
+        },
+        "alerts_sent": {
+          "type": "integer"
+        },
+        "alerts_blocked_by_qa": {
+          "type": "integer"
+        },
+        "remediation_actions_taken": {
+          "type": "integer"
+        },
+        "sla_compliance": {
+          "type": "number"
+        },
+        "data_quality_score": {
+          "type": "number"
+        },
+        "recommendations": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "next_check_time": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  },
+  "performance": {
+    "sla": {
+      "sla_check_minutes": 10,
+      "data_quality_check_minutes": 30,
+      "weekly_digest_minutes": 60
+    },
+    "thresholds": {
+      "alert_accuracy_minimum": 0.95,
+      "false_positive_rate_max": 0.05,
+      "monitoring_success_rate": 0.99
+    },
+    "cost_budget": {
+      "per_sla_check": 0.10,
+      "per_data_quality_check": 0.50,
+      "per_weekly_digest": 1.00,
+      "daily_max": 10.00
+    }
+  },
+  "monitoring": {
+    "metrics": [
+      "workflow_execution_success_rate",
+      "alert_accuracy",
+      "false_positive_rate",
+      "monitoring_coverage",
+      "remediation_success_rate",
+      "time_to_detect_issues"
+    ],
+    "self_monitoring": {
+      "enabled": true,
+      "alert_if_workflow_fails": true,
+      "fallback_monitoring": "manual_check_required"
+    }
+  },
+  "schedule_details": {
+    "sla_monitoring": {
+      "operation": "sla_check",
+      "time_range": "last_1_hour",
+      "checks": [
+        "Open tickets approaching SLA breach",
+        "Tickets that breached SLA in last hour",
+        "Tickets assigned but no response",
+        "Unassigned high-priority tickets"
+      ],
+      "output": "Generate alerts for at-risk tickets"
+    },
+    "data_quality_monitoring": {
+      "operation": "data_quality_check",
+      "time_range": "all_active_records",
+      "checks": [
+        "Missing required fields in CRM",
+        "Duplicate contacts",
+        "Stale records (>180 days inactive)",
+        "Invalid data formats",
+        "Completeness scores"
+      ],
+      "output": "Generate data quality report and remediation tasks"
+    },
+    "weekly_digest": {
+      "operation": "weekly_digest",
+      "time_range": "last_7_days",
+      "includes": [
+        "SLA compliance summary",
+        "Data quality trends",
+        "Top issues by frequency",
+        "Cost breakdown",
+        "Workflow completion rates",
+        "Week-over-week comparisons",
+        "Recommendations"
+      ],
+      "output": "Email digest to stakeholders"
+    }
+  },
+  "testing": {
+    "test_scenarios": [
+      {
+        "name": "SLA Monitoring - All Healthy",
+        "trigger": {
+          "operation": "sla_check",
+          "time_range": "last_1_hour"
+        },
+        "mock_data": {
+          "total_tickets": 50,
+          "at_risk_tickets": 0,
+          "breached_tickets": 0
+        },
+        "expected_outcome": {
+          "workflow_status": "completed",
+          "overall_health": "healthy",
+          "alerts_sent": 0
+        }
+      },
+      {
+        "name": "SLA Monitoring - At Risk Tickets",
+        "trigger": {
+          "operation": "sla_check",
+          "time_range": "last_1_hour"
+        },
+        "mock_data": {
+          "total_tickets": 50,
+          "at_risk_tickets": 3,
+          "breached_tickets": 0
+        },
+        "expected_outcome": {
+          "workflow_status": "completed",
+          "overall_health": "warning",
+          "alerts_sent": 3
+        }
+      },
+      {
+        "name": "Data Quality - Below Threshold",
+        "trigger": {
+          "operation": "data_quality_check"
+        },
+        "mock_data": {
+          "total_contacts": 10000,
+          "missing_fields": 1200,
+          "duplicates": 150,
+          "quality_score": 87
+        },
+        "expected_outcome": {
+          "workflow_status": "completed",
+          "overall_health": "warning",
+          "alerts_sent": 1,
+          "data_quality_score": 87
+        }
+      }
+    ]
+  },
+  "metadata": {
+    "created_at": "2025-10-31T00:00:00Z",
+    "updated_at": "2025-10-31T00:00:00Z",
+    "created_by": "system",
+    "tags": ["operations", "monitoring", "sla", "data-quality", "scheduled"],
+    "squad": "ops-squad",
+    "phase": "phase-1",
+    "relevance_workforce_compatible": true
+  }
+}

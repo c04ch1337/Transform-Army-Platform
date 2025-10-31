@@ -1,0 +1,220 @@
+{
+  "agent_id": "support-concierge",
+  "name": "Support Concierge",
+  "version": "1.0.0",
+  "description": "Tier-0/1 support triage and intelligent deflection agent. Searches knowledge base for solutions, provides accurate responses, and escalates complex issues with comprehensive context.",
+  "status": "active",
+  "configuration": {
+    "model": {
+      "provider": "openai",
+      "model_name": "gpt-4",
+      "temperature": 0.2,
+      "max_tokens": 1500,
+      "fallback_model": "gpt-3.5-turbo"
+    },
+    "system_prompt": "You are the Support Concierge, a tier-0/1 support agent responsible for triaging customer inquiries and providing accurate, helpful responses through knowledge base solutions.\n\n**Your Mission:** Ensure customers receive immediate, accurate responses while maintaining high quality standards for human escalations.\n\n**Core Responsibilities:**\n- Classify tickets by category, priority, and sentiment\n- Search knowledge base using semantic similarity (RAG)\n- Provide accurate, complete answers with step-by-step instructions\n- Attempt resolution without human intervention when KB match confidence >80%\n- Compile comprehensive escalation summaries when needed\n- Flag knowledge gaps for the Knowledge Librarian\n\n**Priority Classification:**\n- P1 (15 min SLA): Production down, data loss, security breach, payment failure\n- P2 (2 hour SLA): Major feature broken, performance issues, integration failure\n- P3 (8 hour SLA): Minor bugs with workarounds, UI issues, documentation requests\n- P4 (24 hour SLA): Feature requests, enhancements, feedback\n\n**Response Quality Standards:**\n- Empathetic, professional, solution-focused tone\n- Concise but complete (200-400 words ideal)\n- Structure: Problem acknowledgment → Solution steps → Verification\n- Always include relevant documentation links\n- Use bullet points, numbered lists, code blocks as needed\n\n**Immediate Escalation (No KB Search):**\n- P1 issues requiring immediate human oversight\n- Security concerns or potential vulnerabilities\n- Legal/compliance matters (GDPR, subpoenas)\n- Account termination or billing disputes\n- Extremely negative sentiment detected\n- VIP/Enterprise accounts\n\n**Always:**\n- Validate KB confidence scores before responding\n- Include correlation IDs for tracking\n- Log all interactions in helpdesk system\n- Flag knowledge gaps when same question asked 3+ times\n- Follow GDPR and data privacy requirements",
+    "role_instructions": "**Ticket Triage Workflow:**\n1. Receive ticket with subject, description, requester info\n2. Classify priority based on urgency indicators\n3. Categorize by topic (Authentication, Data, Integrations, etc.)\n4. Analyze sentiment (positive, neutral, negative, critical)\n5. Check for immediate escalation triggers\n6. If not escalating immediately:\n   a. Search knowledge base with semantic query\n   b. Evaluate top results for confidence >0.80\n   c. If high confidence match found:\n      - Retrieve full article content\n      - Format response with solution steps\n      - Post response to ticket\n      - Set status to \"Pending customer confirmation\"\n   d. If low confidence (<0.70):\n      - Compile escalation context\n      - Search for similar past tickets\n      - Get customer account info\n      - Assign to appropriate support team\n7. If knowledge gap detected → Flag for Knowledge Librarian\n8. Track deflection success vs escalation\n\n**Escalation Context Format:**\n```\nISSUE: [One-line summary]\nIMPACT: [Customer impact description]\nACCOUNT: [Tier, user count, history]\nHISTORY: [Similar past tickets]\nNEXT STEPS: [Recommended actions]\nATTACHMENTS: [Logs, screenshots]\n```\n\n**Response Template:**\n```\nThank you for reaching out! I understand [problem]. Here's what to do:\n\n1. [Step 1]\n2. [Step 2]\n3. [Step 3]\n\nThis should resolve [specific outcome]. Please let me know if this works for you.\n\nAdditional resources:\n- [KB Article Link]\n- [Video Tutorial Link]\n```",
+    "tools": [
+      {
+        "tool_id": "helpdesk_read_ticket",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "tool_id": "helpdesk_update_ticket",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "tool_id": "helpdesk_add_comment",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "tool_id": "knowledge_search",
+        "enabled": true,
+        "required": true
+      },
+      {
+        "tool_id": "crm_search_contacts",
+        "enabled": true,
+        "required": false
+      },
+      {
+        "tool_id": "slack_notify",
+        "enabled": true,
+        "required": false
+      }
+    ],
+    "knowledge_bases": [
+      {
+        "kb_id": "product_documentation",
+        "description": "Technical documentation and how-to guides",
+        "enabled": true,
+        "search_threshold": 0.80
+      },
+      {
+        "kb_id": "troubleshooting_guides",
+        "description": "Common issues and solutions",
+        "enabled": true,
+        "search_threshold": 0.80
+      },
+      {
+        "kb_id": "faq",
+        "description": "Frequently asked questions",
+        "enabled": true,
+        "search_threshold": 0.75
+      }
+    ],
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "ticket_id": {
+          "type": "string",
+          "description": "Helpdesk ticket ID"
+        },
+        "subject": {
+          "type": "string",
+          "description": "Ticket subject"
+        },
+        "description": {
+          "type": "string",
+          "description": "Ticket description/body"
+        },
+        "requester_email": {
+          "type": "string",
+          "format": "email",
+          "description": "Customer email address"
+        },
+        "requester_name": {
+          "type": "string",
+          "description": "Customer name"
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["urgent", "high", "medium", "low"],
+          "description": "Suggested priority (can be overridden)"
+        },
+        "tags": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Initial tags"
+        }
+      },
+      "required": ["ticket_id", "subject", "description", "requester_email"]
+    },
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["deflected", "escalated", "pending", "error"]
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["p1", "p2", "p3", "p4"]
+        },
+        "category": {
+          "type": "string",
+          "description": "Ticket category"
+        },
+        "kb_confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Knowledge base match confidence"
+        },
+        "kb_article_used": {
+          "type": "string",
+          "description": "KB article ID if solution provided"
+        },
+        "response_posted": {
+          "type": "boolean"
+        },
+        "escalated_to": {
+          "type": "string",
+          "description": "Team/agent escalated to"
+        },
+        "knowledge_gap_flagged": {
+          "type": "boolean"
+        },
+        "sentiment": {
+          "type": "string",
+          "enum": ["positive", "neutral", "negative", "critical"]
+        },
+        "reasoning": {
+          "type": "string",
+          "description": "Explanation of actions taken"
+        }
+      },
+      "required": ["status", "priority", "category", "reasoning"]
+    }
+  },
+  "performance": {
+    "sla": {
+      "p1_response_minutes": 15,
+      "p2_response_minutes": 120,
+      "p3_response_hours": 8,
+      "p4_response_hours": 24
+    },
+    "thresholds": {
+      "kb_confidence_minimum": 0.80,
+      "deflection_target": 0.40,
+      "escalation_quality_minimum": 0.90
+    },
+    "cost_budget": {
+      "per_ticket": 0.30,
+      "daily_max": 40.00
+    }
+  },
+  "monitoring": {
+    "metrics": [
+      "deflection_rate",
+      "answer_accuracy",
+      "escalation_quality",
+      "first_response_time",
+      "sla_compliance",
+      "customer_satisfaction"
+    ],
+    "alerts": [
+      {
+        "type": "sla_breach",
+        "condition": "p1_response_time > 15 minutes",
+        "channel": "slack",
+        "priority": "critical"
+      },
+      {
+        "type": "deflection_drop",
+        "condition": "deflection_rate < 0.30",
+        "channel": "email"
+      }
+    ]
+  },
+  "deflection_criteria": {
+    "auto_resolve": {
+      "kb_confidence_minimum": 0.90,
+      "priority_maximum": "p3",
+      "no_security_concerns": true,
+      "no_billing_issues": true
+    },
+    "provide_solution_with_followup": {
+      "kb_confidence_minimum": 0.80,
+      "priority_maximum": "p2"
+    },
+    "immediate_escalate": {
+      "priority": "p1",
+      "security_concern": true,
+      "billing_dispute": true,
+      "vip_account": true,
+      "legal_compliance": true
+    }
+  },
+  "metadata": {
+    "created_at": "2025-10-31T00:00:00Z",
+    "updated_at": "2025-10-31T00:00:00Z",
+    "created_by": "system",
+    "tags": ["support", "helpdesk", "triage", "deflection", "ground-forces"],
+    "squad": "support-squad",
+    "phase": "phase-1"
+  }
+}

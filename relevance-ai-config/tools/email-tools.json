@@ -1,0 +1,316 @@
+{
+  "tool_category": "email",
+  "description": "Email integration tools for sending emails, searching conversations, and managing templates across Gmail, Outlook, and other providers via the adapter service",
+  "adapter_base_url": "{{ADAPTER_SERVICE_URL}}",
+  "version": "1.0.0",
+  "tools": [
+    {
+      "tool_id": "email_send",
+      "name": "Send Email",
+      "description": "Send an email with support for HTML content, attachments, scheduling, and tracking. Can use predefined templates.",
+      "http_config": {
+        "method": "POST",
+        "endpoint": "/api/v1/email/send",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 30
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "idempotency_key": {
+            "type": "string",
+            "description": "Unique key for idempotent operation"
+          },
+          "correlation_id": {
+            "type": "string",
+            "description": "Correlation ID for request tracing"
+          },
+          "email": {
+            "type": "object",
+            "required": ["from", "to", "subject", "body"],
+            "properties": {
+              "from": {
+                "type": "object",
+                "required": ["email"],
+                "properties": {
+                  "email": {"type": "string", "format": "email"},
+                  "name": {"type": "string"}
+                }
+              },
+              "to": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "required": ["email"],
+                  "properties": {
+                    "email": {"type": "string", "format": "email"},
+                    "name": {"type": "string"}
+                  }
+                },
+                "description": "Recipient email addresses"
+              },
+              "cc": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "email": {"type": "string", "format": "email"},
+                    "name": {"type": "string"}
+                  }
+                }
+              },
+              "bcc": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "email": {"type": "string", "format": "email"},
+                    "name": {"type": "string"}
+                  }
+                }
+              },
+              "reply_to": {
+                "type": "object",
+                "properties": {
+                  "email": {"type": "string", "format": "email"},
+                  "name": {"type": "string"}
+                }
+              },
+              "subject": {"type": "string", "description": "Email subject"},
+              "body": {
+                "type": "object",
+                "required": ["text"],
+                "properties": {
+                  "text": {"type": "string", "description": "Plain text version"},
+                  "html": {"type": "string", "description": "HTML version"}
+                }
+              },
+              "attachments": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "filename": {"type": "string"},
+                    "content_type": {"type": "string"},
+                    "content": {"type": "string", "description": "Base64-encoded content"},
+                    "url": {"type": "string", "description": "URL to content"}
+                  }
+                }
+              },
+              "headers": {
+                "type": "object",
+                "description": "Custom email headers"
+              }
+            }
+          },
+          "options": {
+            "type": "object",
+            "properties": {
+              "track_opens": {"type": "boolean", "default": false},
+              "track_clicks": {"type": "boolean", "default": false},
+              "send_at": {"type": "string", "format": "date-time", "description": "Schedule for future delivery"},
+              "priority": {"type": "string", "enum": ["high", "normal", "low"], "default": "normal"}
+            }
+          }
+        },
+        "required": ["email"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "message_id": {"type": "string", "description": "Internal message ID"},
+          "thread_id": {"type": "string"},
+          "provider": {"type": "string"},
+          "provider_message_id": {"type": "string"},
+          "status": {"type": "string", "description": "Email status (queued, sent, delivered)"},
+          "scheduled_for": {"type": "string", "format": "date-time"},
+          "estimated_delivery": {"type": "string", "format": "date-time"}
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 3,
+        "backoff_multiplier": 2,
+        "handle_bounces": true
+      }
+    },
+    {
+      "tool_id": "email_search",
+      "name": "Search Emails",
+      "description": "Search for emails by sender, recipient, subject, date range, labels, or full-text query. Returns matching emails with metadata.",
+      "http_config": {
+        "method": "POST",
+        "endpoint": "/api/v1/email/search",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 30
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Full-text search query"
+          },
+          "from_email": {
+            "type": "string",
+            "format": "email",
+            "description": "Filter by sender email"
+          },
+          "to_email": {
+            "type": "string",
+            "format": "email",
+            "description": "Filter by recipient email"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Filter by subject (partial match)"
+          },
+          "has_attachments": {
+            "type": "boolean",
+            "description": "Filter emails with/without attachments"
+          },
+          "labels": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Filter by labels (e.g., ['INBOX', 'IMPORTANT'])"
+          },
+          "is_read": {
+            "type": "boolean",
+            "description": "Filter by read status"
+          },
+          "date_after": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Filter emails after date"
+          },
+          "date_before": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Filter emails before date"
+          },
+          "thread_id": {
+            "type": "string",
+            "description": "Filter by thread ID"
+          },
+          "pagination": {
+            "type": "object",
+            "properties": {
+              "page": {"type": "integer", "default": 1},
+              "page_size": {"type": "integer", "default": 50}
+            }
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "matches": {
+            "type": "array",
+            "description": "Array of matching emails"
+          },
+          "pagination": {
+            "type": "object",
+            "description": "Pagination metadata"
+          }
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 3,
+        "backoff_multiplier": 2
+      }
+    },
+    {
+      "tool_id": "email_validate",
+      "name": "Validate Email Address",
+      "description": "Validate email address format and optionally check deliverability.",
+      "http_config": {
+        "method": "POST",
+        "endpoint": "/api/v1/email/validate",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-Tenant-ID": "{{TENANT_ID}}",
+          "Authorization": "Bearer {{API_KEY}}"
+        },
+        "timeout_seconds": 10
+      },
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "Email address to validate"
+          },
+          "check_deliverability": {
+            "type": "boolean",
+            "default": false,
+            "description": "Perform SMTP deliverability check"
+          }
+        },
+        "required": ["email"]
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "valid": {"type": "boolean", "description": "Whether email is valid"},
+          "format_valid": {"type": "boolean"},
+          "deliverable": {"type": "boolean"},
+          "reason": {"type": "string", "description": "Validation failure reason if invalid"}
+        }
+      },
+      "error_handling": {
+        "retry_on": [500, 502, 503, 504],
+        "max_retries": 2,
+        "backoff_multiplier": 2
+      }
+    }
+  ],
+  "configuration": {
+    "provider_mapping": {
+      "gmail": {
+        "enabled": true,
+        "credentials_key": "GMAIL_CREDENTIALS"
+      },
+      "outlook": {
+        "enabled": true,
+        "credentials_key": "OUTLOOK_CREDENTIALS"
+      },
+      "sendgrid": {
+        "enabled": true,
+        "credentials_key": "SENDGRID_API_KEY",
+        "use_for_transactional": true
+      }
+    },
+    "rate_limits": {
+      "requests_per_minute": 50,
+      "concurrent_requests": 10,
+      "daily_send_limit": 5000
+    },
+    "defaults": {
+      "from_address": "noreply@transform-army.ai",
+      "from_name": "Transform Army AI",
+      "reply_to": "support@transform-army.ai",
+      "track_opens": false,
+      "track_clicks": false
+    },
+    "templates": {
+      "enabled": true,
+      "template_variables": ["first_name", "last_name", "company", "agent_name", "date", "time", "meeting_link"]
+    }
+  },
+  "metadata": {
+    "created_at": "2025-10-31T00:00:00Z",
+    "updated_at": "2025-10-31T00:00:00Z",
+    "version": "1.0.0"
+  }
+}
