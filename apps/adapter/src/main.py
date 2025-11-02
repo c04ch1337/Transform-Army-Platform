@@ -28,12 +28,15 @@ from .core.exceptions import (
     generic_exception_handler
 )
 
-# Import provider modules to register them
-# This ensures providers are registered with the factory at startup
-from .providers import crm  # noqa: F401
-from .providers import helpdesk  # noqa: F401
-from .providers import calendar  # noqa: F401
-
+# Import providers to trigger auto-registration
+# The @register_provider decorators execute when modules are imported
+from .providers import (
+    crm,
+    helpdesk,
+    calendar,
+    email,
+    knowledge
+)
 
 # Setup logging
 setup_logging()
@@ -52,6 +55,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.api_title} v{settings.api_version}")
     logger.info(f"Environment: {settings.environment}")
     logger.info(f"Debug mode: {settings.debug}")
+    logger.info("Provider modules imported - auto-registration complete")
     
     # Initialize providers if credentials are configured
     enabled_providers = []
@@ -218,6 +222,20 @@ try:
     app.include_router(knowledge_router, prefix="/api/v1/knowledge", tags=["Knowledge"])
 except ImportError:
     logger.warning("Knowledge router not available")
+
+try:
+    from .api.admin import router as admin_router
+    app.include_router(admin_router, prefix="/api/v1/admin", tags=["Admin"])
+    logger.info("Admin router registered successfully")
+except ImportError as e:
+    logger.warning(f"Admin router not available: {e}")
+
+try:
+    from .api.logs import router as logs_router
+    app.include_router(logs_router, prefix="/api/v1/logs", tags=["Logs"])
+    logger.info("Logs router registered successfully")
+except ImportError as e:
+    logger.warning(f"Logs router not available: {e}")
 
 
 if __name__ == "__main__":

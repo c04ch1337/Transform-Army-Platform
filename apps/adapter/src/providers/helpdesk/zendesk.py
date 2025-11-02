@@ -20,12 +20,14 @@ from ..base import (
     RateLimitError,
     ProviderError
 )
+from ..factory import register_provider, ProviderType
 from ...core.logging import get_logger
 
 
 logger = get_logger(__name__)
 
 
+@register_provider(ProviderType.HELPDESK, "zendesk")
 class ZendeskProvider(HelpdeskProvider):
     """
     Zendesk helpdesk provider implementation using Zendesk API v2.

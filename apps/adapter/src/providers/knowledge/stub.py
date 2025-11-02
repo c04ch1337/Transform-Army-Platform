@@ -15,12 +15,14 @@ from ..base import (
     ValidationError,
     NotFoundError
 )
+from ..factory import register_provider, ProviderType
 from ...core.logging import get_logger
 
 
 logger = get_logger(__name__)
 
 
+@register_provider(ProviderType.KNOWLEDGE, "stub")
 class StubKnowledgeProvider(ProviderPlugin):
     """
     Stub knowledge base provider implementation.

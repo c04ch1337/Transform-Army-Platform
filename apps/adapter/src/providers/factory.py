@@ -35,6 +35,7 @@ class ProviderRegistry:
     def __init__(self):
         """Initialize provider registry."""
         self._providers: Dict[str, Type[ProviderPlugin]] = {}
+        self._registry: Dict[ProviderType, Dict[str, Type[ProviderPlugin]]] = {}
     
     def register(self, provider_class: Type[ProviderPlugin]) -> None:
         """
@@ -74,6 +75,39 @@ class ProviderRegistry:
 
 # Global provider registry
 _registry = ProviderRegistry()
+
+
+# Create global reference for decorator
+provider_registry = _registry
+
+
+def register_provider(provider_type: ProviderType, provider_name: str):
+    """Decorator to automatically register a provider class.
+    
+    Usage:
+        @register_provider(ProviderType.CRM, "hubspot")
+        class HubSpotProvider(BaseProvider):
+            ...
+    
+    Args:
+        provider_type: Type of provider (CRM, HELPDESK, etc.)
+        provider_name: Unique name for this provider
+    """
+    def decorator(cls):
+        # Get or create registry for this provider type
+        if provider_type not in provider_registry._registry:
+            provider_registry._registry[provider_type] = {}
+        
+        # Register the provider class
+        provider_registry._registry[provider_type][provider_name] = cls
+        
+        # Also register in the old _providers dict for backward compatibility
+        provider_registry._providers[provider_name] = cls
+        
+        logger.info(f"Registered provider: {provider_type.value}/{provider_name} -> {cls.__name__}")
+        
+        return cls
+    return decorator
 
 
 def get_registry() -> ProviderRegistry:

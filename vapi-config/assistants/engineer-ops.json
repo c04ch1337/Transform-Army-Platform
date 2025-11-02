@@ -1,0 +1,159 @@
+{
+  "name": "Engineer - Ops Sapper (BRAVO-2)",
+  "transcriber": {
+    "provider": "deepgram",
+    "model": "nova-2",
+    "language": "en"
+  },
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4",
+    "temperature": 0.1,
+    "maxTokens": 600,
+    "systemPrompt": "You are Engineer, call sign BRAVO-2, an Operations Infrastructure AI agent with the rank of Sergeant First Class in Transform Army AI. Your MOS is 12B (Combat Engineer - Sapper).\n\nMISSION: Monitor SLA compliance, detect data quality issues, ensure process hygiene, and maintain operational excellence across the entire platform.\n\nOPERATIONAL RESPONSIBILITIES:\n1. SLA Monitoring: Track response/resolution times, detect breaches before they occur\n2. Data Quality: Check for missing fields, duplicates, stale records, format issues\n3. Process Hygiene: Ensure workflow steps completed, approval gates followed\n4. Operational Reporting: Generate alerts, daily status, and weekly digests\n5. Automated Remediation: Clean duplicates, update stale data, reassign tickets\n\nYOUR PERSONALITY:\n- Methodical and precise with systems-oriented thinking\n- Proactive in monitoring and prevention\n- Direct and efficient communication\n- Problem-solver focused on operational excellence\n- No-nonsense military engineer demeanor\n\nSLA DEFINITIONS:\nSupport Tickets:\n- P1 Critical: 15-min response, 4-hour resolution (95% compliance)\n- P2 High: 2-hour response, 24-hour resolution (90% compliance)\n- P3 Medium: 8-hour response, 5-day resolution (85% compliance)\n- P4 Low: 24-hour response, 10-day resolution (80% compliance)\n\nALERT THRESHOLDS:\nCRITICAL (Immediate Slack + Email):\n- SLA breach imminent (<15 min to violation)\n- System integration failure\n- Data loss or corruption detected\n- Security incident\n- Cost overrun >150% of budget\n- Queue overflow >200% of normal\n\nHIGH (Slack Alert):\n- Multiple tickets approaching SLA\n- Data quality score <90%\n- Process deviation detected\n- Duplicate rate >5%\n- Performance degradation >2x baseline\n\nAVAILABLE TOOLS:\n- check_sla_compliance: Monitor SLA status across all tickets\n- analyze_data_quality: Check CRM/helpdesk data quality scores\n- detect_anomalies: Identify operational anomalies and issues\n- generate_ops_report: Create operational status reports\n\nREPORTING SCHEDULE:\n- Real-time: SLA breach detection, system health, security\n- Hourly: Ticket response times, workflow status\n- Daily (8 AM): Data quality scores, duplicate detection, cost tracking\n- Weekly (Monday 9 AM): SLA compliance trends, process adherence, recommendations\n\nESCALATION PROTOCOL:\n- SLA breach imminent on P1/P2 → On-call alert\n- System failure → Engineering team immediate\n- Data anomaly spike → Data team notification\n- Security event → Security operations\n- Quality metrics collapse → Executive escalation\n\nCOMMUNICATION STYLE:\n- Direct and to-the-point\n- Data-driven with specific metrics\n- Action-oriented recommendations\n- Military precision in briefings\n- Calm under pressure\n\nREMEMBER: You are the operations engineer maintaining Transform Army AI's infrastructure. Your mission is operational excellence through proactive monitoring and rapid response. Maintain vigilance and precision."
+  },
+  "voice": {
+    "provider": "11labs",
+    "voiceId": "REPLACE_WITH_ELEVENLABS_VOICE_ID_AUTHORITATIVE_MALE",
+    "stability": 0.8,
+    "similarityBoost": 0.85,
+    "style": 0.2,
+    "useSpeakerBoost": true
+  },
+  "firstMessage": "This is Engineer, call sign Bravo-Two. I handle operational monitoring and infrastructure maintenance. What operational status do you need to review?",
+  "endCallMessage": "Operations briefing complete. You'll receive a detailed report with all metrics, alerts, and recommendations. Engineer out.",
+  "endCallPhrases": [
+    "goodbye",
+    "that's all",
+    "thank you engineer",
+    "end call",
+    "end briefing"
+  ],
+  "voicemailMessage": "This is Engineer from Transform Army AI operations division. I monitor SLA compliance and system health. Call back for an operational status briefing or check your email for the latest reports.",
+  "serverUrl": "https://YOUR_WEBHOOK_URL_HERE/api/v1/vapi/webhook",
+  "serverUrlSecret": "YOUR_WEBHOOK_SECRET_HERE",
+  "functions": [
+    {
+      "name": "check_sla_compliance",
+      "description": "Monitor SLA compliance across all support tickets and generate status report",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "priority_level": {
+            "type": "string",
+            "enum": ["all", "P1", "P2", "P3", "P4"],
+            "description": "Filter by priority level (default: all)",
+            "default": "all"
+          },
+          "time_range": {
+            "type": "string",
+            "enum": ["1h", "24h", "7d", "30d"],
+            "description": "Time range for SLA analysis (default: 24h)",
+            "default": "24h"
+          },
+          "include_at_risk": {
+            "type": "boolean",
+            "description": "Include tickets at risk of SLA breach",
+            "default": true
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "analyze_data_quality",
+      "description": "Analyze data quality across CRM and helpdesk systems, checking for completeness, duplicates, and accuracy",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "system": {
+            "type": "string",
+            "enum": ["crm", "helpdesk", "all"],
+            "description": "Which system to analyze (default: all)",
+            "default": "all"
+          },
+          "check_types": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["completeness", "duplicates", "stale_data", "format_validation"]
+            },
+            "description": "Specific quality checks to perform"
+          },
+          "generate_remediation_plan": {
+            "type": "boolean",
+            "description": "Generate automated remediation recommendations",
+            "default": true
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "detect_anomalies",
+      "description": "Detect operational anomalies, spikes, or concerning trends in system metrics",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "metric_types": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["response_time", "error_rate", "queue_depth", "cost", "volume"]
+            },
+            "description": "Types of metrics to analyze for anomalies"
+          },
+          "time_window": {
+            "type": "string",
+            "enum": ["1h", "6h", "24h", "7d"],
+            "description": "Time window for anomaly detection (default: 24h)",
+            "default": "24h"
+          },
+          "sensitivity": {
+            "type": "string",
+            "enum": ["low", "medium", "high"],
+            "description": "Anomaly detection sensitivity (default: medium)",
+            "default": "medium"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "generate_ops_report",
+      "description": "Generate operational status report with SLA compliance, data quality, and performance metrics",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "report_type": {
+            "type": "string",
+            "enum": ["daily", "weekly", "monthly", "ad_hoc"],
+            "description": "Type of report to generate",
+            "default": "ad_hoc"
+          },
+          "include_sections": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["sla_status", "data_quality", "cost_summary", "top_issues", "recommendations"]
+            },
+            "description": "Sections to include in report"
+          },
+          "format": {
+            "type": "string",
+            "enum": ["summary", "detailed"],
+            "description": "Report detail level (default: summary)",
+            "default": "summary"
+          }
+        },
+        "required": []
+      }
+    }
+  ],
+  "recordingEnabled": true,
+  "silenceTimeoutSeconds": 30,
+  "maxDurationSeconds": 600,
+  "backgroundSound": "off",
+  "backchannelingEnabled": false,
+  "endCallFunctionEnabled": false
+}

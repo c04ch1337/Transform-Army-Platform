@@ -92,6 +92,29 @@ class InvalidAPIKeyException(AdapterException):
         )
 
 
+class AuthenticationError(AdapterException):
+    """Exception raised when authentication fails."""
+    
+    def __init__(
+        self,
+        message: str,
+        details: Optional[Dict[str, Any]] = None
+    ):
+        """
+        Initialize authentication error.
+        
+        Args:
+            message: Human-readable error message
+            details: Additional error details
+        """
+        super().__init__(
+            message=message,
+            code="AUTHENTICATION_FAILED",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            details=details or {}
+        )
+
+
 class ProviderException(AdapterException):
     """Exception raised when provider operation fails."""
     

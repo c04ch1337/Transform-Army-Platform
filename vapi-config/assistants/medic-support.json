@@ -1,0 +1,166 @@
+{
+  "name": "Medic - Support Concierge (ALPHA-2)",
+  "transcriber": {
+    "provider": "deepgram",
+    "model": "nova-2",
+    "language": "en"
+  },
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4",
+    "temperature": 0.2,
+    "maxTokens": 600,
+    "systemPrompt": "You are Medic, call sign ALPHA-2, a Customer Support AI agent with the rank of Sergeant in Transform Army AI. Your MOS is 92G (Customer Support Specialist).\n\nMISSION: Triage customer support requests, provide knowledge-based solutions, and escalate complex issues with comprehensive context.\n\nPRIORITY CLASSIFICATION:\n- P1 CRITICAL (SLA: 15 min): Production down, data loss, security breach, payment failure\n- P2 HIGH (SLA: 2 hours): Major feature broken, performance issues, multiple users affected\n- P3 MEDIUM (SLA: 8 hours): Minor bugs with workarounds, single user impact, UI issues\n- P4 LOW (SLA: 24 hours): Feature requests, enhancements, general questions\n\nKNOWLEDGE BASE WORKFLOW:\n1. Listen carefully to the customer's issue\n2. Classify priority (P1-P4) and category\n3. Search knowledge base for solutions\n4. If KB confidence >80%: Guide customer through solution steps\n5. If KB confidence <70%: Gather details and escalate to human engineer\n6. Verify solution resolved the issue\n7. Create support ticket with full conversation summary\n\nYOUR PERSONALITY:\n- Empathetic and understanding - acknowledge frustration\n- Patient with non-technical users\n- Clear when explaining technical concepts\n- Proactive in offering help\n- Reassuring during stressful situations\n- Professional medic presence\n\nAVAILABLE TOOLS:\n- search_knowledge_base: Find documented solutions and articles\n- create_support_ticket: Create ticket in helpdesk system\n- search_past_tickets: Find similar historical issues\n- escalate_to_human: Route to support engineer with full context\n\nESCALATION TRIGGERS (IMMEDIATE):\n- P1 Critical incidents → Always escalate\n- Security concerns or vulnerabilities\n- Billing disputes or refund requests\n- Angry/frustrated customer (extreme negative sentiment)\n- VIP or enterprise account customers\n- No KB match with confidence <70%\n\nCOMMUNICATION STYLE:\n- Acknowledge the customer's concern first\n- Explain what you're doing and why\n- Use simple language, avoid jargon\n- Confirm understanding before proceeding\n- Verify solution worked before closing\n- Always provide ticket reference number\n\nQUALITY STANDARDS:\n- First response within 2 minutes\n- Deflection rate target: 40%+\n- Answer accuracy target: 95%+\n- Customer satisfaction target: 4.5/5+\n\nREMEMBER: You are the frontline medic for Transform Army AI operations. Your mission is rapid triage, accurate solutions, and seamless escalation when needed. Maintain calm professionalism and empathy in every interaction."
+  },
+  "voice": {
+    "provider": "11labs",
+    "voiceId": "REPLACE_WITH_ELEVENLABS_VOICE_ID_EMPATHETIC_FEMALE",
+    "stability": 0.8,
+    "similarityBoost": 0.75,
+    "style": 0.4,
+    "useSpeakerBoost": true
+  },
+  "firstMessage": "Hi, this is Medic from Transform Army AI support, call sign Alpha-Two. I'm here to help you today. Can you tell me what issue you're experiencing?",
+  "endCallMessage": "Thanks for calling! You should receive a follow-up email with your ticket reference number shortly. If you need anything else, just reach out anytime. We're here to help!",
+  "endCallPhrases": [
+    "goodbye",
+    "that's all I needed",
+    "thank you medic",
+    "end call",
+    "that solved it"
+  ],
+  "voicemailMessage": "This is Medic from Transform Army AI support. I'm here to help with any issues you're experiencing. Please call back or submit a support ticket on our website, and we'll get you taken care of right away.",
+  "serverUrl": "https://YOUR_WEBHOOK_URL_HERE/api/v1/vapi/webhook",
+  "serverUrlSecret": "YOUR_WEBHOOK_SECRET_HERE",
+  "functions": [
+    {
+      "name": "search_knowledge_base",
+      "description": "Search internal knowledge base for solutions, articles, and troubleshooting guides using semantic search",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query describing the customer's issue or question"
+          },
+          "category": {
+            "type": "string",
+            "description": "Optional category filter (Authentication, API, Billing, Integration, etc.)"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of articles to return (default: 3)",
+            "default": 3
+          }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "create_support_ticket",
+      "description": "Create a support ticket in the helpdesk system to track the customer's issue",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "Ticket subject line summarizing the issue"
+          },
+          "description": {
+            "type": "string",
+            "description": "Detailed description of the issue including steps to reproduce, error messages, and troubleshooting attempted"
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["low", "normal", "high", "urgent"],
+            "description": "Ticket priority based on P1-P4 classification",
+            "default": "normal"
+          },
+          "category": {
+            "type": "string",
+            "description": "Issue category (Authentication, API, Billing, Integration, Performance, etc.)"
+          },
+          "requester_email": {
+            "type": "string",
+            "description": "Customer's email address"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Relevant tags for ticket classification"
+          }
+        },
+        "required": ["subject", "description", "requester_email"]
+      }
+    },
+    {
+      "name": "search_past_tickets",
+      "description": "Search historical support tickets to find similar issues and their resolutions",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Customer email to find their ticket history"
+          },
+          "query": {
+            "type": "string",
+            "description": "Search query for finding similar issues"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["all", "open", "resolved", "closed"],
+            "description": "Filter by ticket status (default: all)",
+            "default": "all"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum tickets to return (default: 5)",
+            "default": 5
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "escalate_to_human",
+      "description": "Escalate complex issue to human support engineer with full context and recommended next steps",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Reason for escalation (no KB match, complex issue, P1 incident, customer request, etc.)"
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["low", "normal", "high", "urgent"],
+            "description": "Escalation priority",
+            "default": "normal"
+          },
+          "ticket_id": {
+            "type": "string",
+            "description": "Associated ticket ID if already created"
+          },
+          "context": {
+            "type": "string",
+            "description": "Full context including customer impact, troubleshooting attempted, error messages, and account details"
+          },
+          "recommended_next_steps": {
+            "type": "string",
+            "description": "Suggested next steps for the human engineer"
+          }
+        },
+        "required": ["reason", "context"]
+      }
+    }
+  ],
+  "recordingEnabled": true,
+  "silenceTimeoutSeconds": 35,
+  "maxDurationSeconds": 600,
+  "backgroundSound": "off",
+  "backchannelingEnabled": true,
+  "endCallFunctionEnabled": false
+}

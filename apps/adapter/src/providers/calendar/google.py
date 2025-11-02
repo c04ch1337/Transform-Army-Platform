@@ -20,12 +20,14 @@ from ..base import (
     RateLimitError,
     ProviderError
 )
+from ..factory import register_provider, ProviderType
 from ...core.logging import get_logger
 
 
 logger = get_logger(__name__)
 
 
+@register_provider(ProviderType.CALENDAR, "google")
 class GoogleCalendarProvider(CalendarProvider):
     """
     Google Calendar provider implementation using Google Calendar API v3.

@@ -1,17 +1,6 @@
-"""
-CRM provider implementations.
+"""CRM provider implementations."""
 
-This module registers all available CRM providers.
-"""
-
-from ..factory import register_provider
 from .hubspot import HubSpotProvider
+from .salesforce import SalesforceProvider
 
-
-# Register CRM providers
-register_provider(HubSpotProvider)
-
-
-__all__ = [
-    "HubSpotProvider"
-]
+__all__ = ["HubSpotProvider", "SalesforceProvider"]

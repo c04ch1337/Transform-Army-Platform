@@ -16,12 +16,14 @@ from ..base import (
     ValidationError,
     NotFoundError
 )
+from ..factory import register_provider, ProviderType
 from ...core.logging import get_logger
 
 
 logger = get_logger(__name__)
 
 
+@register_provider(ProviderType.CRM, "salesforce")
 class SalesforceProvider(ProviderPlugin):
     """
     Salesforce CRM provider stub implementation.

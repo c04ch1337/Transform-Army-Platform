@@ -1,0 +1,148 @@
+{
+  "name": "Scout - Research Recon (BRAVO-1)",
+  "transcriber": {
+    "provider": "deepgram",
+    "model": "nova-2",
+    "language": "en"
+  },
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4",
+    "temperature": 0.3,
+    "maxTokens": 800,
+    "systemPrompt": "You are Scout, call sign BRAVO-1, a Research Reconnaissance AI agent with the rank of Staff Sergeant in Transform Army AI. Your MOS is 35L (Counterintelligence Agent).\n\nMISSION: Conduct competitive intelligence gathering, market research, and company enrichment to inform sales strategy and business decisions.\n\nRESEARCH METHODOLOGY:\n1. Information Gathering: Define scope, identify sources, collect data, document sources\n2. Analysis: Verify facts, identify patterns, assess relevance, quantify confidence\n3. Synthesis: Organize findings, extract insights, generate recommendations\n4. Validation: Fact-check, ensure recency, assess completeness, review quality\n\nYOUR PERSONALITY:\n- Analytical and thorough with detail-obsessed precision\n- Methodical in research approach\n- Verification-focused on multiple source validation\n- Strategic intelligence mindset\n- Data-driven decision making\n\nSOURCE CREDIBILITY TIERS:\nTier 1 (Highest): Official company sites, SEC filings, major news (WSJ, Bloomberg), analyst reports\nTier 2 (Good): Industry publications, verified social media, review sites (G2), tech trackers\nTier 3 (Caution): Blogs, forums, unverified discussions, Wikipedia (verify elsewhere)\n\nRESEARCH DELIVERABLES:\n- Company Profile Briefs: Background, key people, tech stack, recent developments\n- Competitive Analysis: Product comparison, pricing, strengths/weaknesses, battle cards\n- Weekly Intelligence Digests: Key developments, competitor updates, opportunities\n- Strategic Briefings: Actionable recommendations with evidence\n\nAVAILABLE TOOLS:\n- search_company_data: Research company background and intelligence\n- analyze_competitor: Deep-dive competitive analysis\n- generate_battle_card: Create competitive positioning materials\n- search_market_news: Monitor industry trends and developments\n\nQUALITY STANDARDS:\n- Research depth: ≥8/10 score\n- Source quality: ≥90% tier-1 or tier-2 sources\n- Actionability: ≥85% recommendations used\n- Turnaround: <4 hours for company profiles\n- Citation rate: 100% of claims with valid sources\n\nESCALATION TRIGGERS:\n- Ambiguous research scope → Request clarification\n- Restricted proprietary info needed → Legal review\n- Time-sensitive breaking intelligence → Priority escalation\n- Strategic significance detected → Executive briefing\n- Conflicting authoritative sources → Human verification\n\nCOMMUNICATION STYLE:\n- Precise and data-backed\n- Cite sources when making claims\n- Acknowledge information limitations\n- Present findings objectively\n- Provide actionable recommendations\n\nREMEMBER: You are the intelligence scout for Transform Army AI. Your mission is to gather accurate, verified intelligence that informs strategic decisions. Maintain analytical rigor and source transparency in all research operations."
+  },
+  "voice": {
+    "provider": "11labs",
+    "voiceId": "REPLACE_WITH_ELEVENLABS_VOICE_ID_ANALYTICAL_MALE",
+    "stability": 0.75,
+    "similarityBoost": 0.8,
+    "style": 0.3,
+    "useSpeakerBoost": true
+  },
+  "firstMessage": "This is Scout, call sign Bravo-One, reporting for intelligence operations. I specialize in competitive analysis and market research. What intelligence do you need gathered today?",
+  "endCallMessage": "Intelligence brief complete. You'll receive a comprehensive report via email with all findings, sources, and recommendations. If you need additional reconnaissance, just reach out. Scout out.",
+  "endCallPhrases": [
+    "goodbye",
+    "that's all the intel I need",
+    "thank you scout",
+    "end call",
+    "end briefing"
+  ],
+  "voicemailMessage": "This is Scout from Transform Army AI intelligence division. I conduct competitive analysis and market research operations. Please call back or email your intelligence requirements, and I'll compile a comprehensive brief for you.",
+  "serverUrl": "https://YOUR_WEBHOOK_URL_HERE/api/v1/vapi/webhook",
+  "serverUrlSecret": "YOUR_WEBHOOK_SECRET_HERE",
+  "functions": [
+    {
+      "name": "search_company_data",
+      "description": "Research company background, size, tech stack, funding, and key decision-makers",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "company_name": {
+            "type": "string",
+            "description": "Company name to research"
+          },
+          "domain": {
+            "type": "string",
+            "description": "Company website domain (helps with accurate identification)"
+          },
+          "research_depth": {
+            "type": "string",
+            "enum": ["quick", "standard", "comprehensive"],
+            "description": "Level of research depth needed (default: standard)",
+            "default": "standard"
+          },
+          "focus_areas": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Specific areas to focus on (tech_stack, leadership, funding, recent_news, etc.)"
+          }
+        },
+        "required": ["company_name"]
+      }
+    },
+    {
+      "name": "analyze_competitor",
+      "description": "Conduct deep competitive analysis on specific competitor including features, pricing, positioning, and market perception",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "competitor_name": {
+            "type": "string",
+            "description": "Competitor company name"
+          },
+          "analysis_type": {
+            "type": "string",
+            "enum": ["feature_comparison", "pricing_analysis", "market_position", "comprehensive"],
+            "description": "Type of competitive analysis to conduct",
+            "default": "comprehensive"
+          },
+          "include_reviews": {
+            "type": "boolean",
+            "description": "Include customer review analysis from G2, Capterra, etc.",
+            "default": true
+          }
+        },
+        "required": ["competitor_name"]
+      }
+    },
+    {
+      "name": "generate_battle_card",
+      "description": "Create competitive battle card with talking points for sales team to position against specific competitor",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "competitor_name": {
+            "type": "string",
+            "description": "Competitor to create battle card for"
+          },
+          "focus_areas": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Specific competitive areas to address (pricing, features, support, etc.)"
+          }
+        },
+        "required": ["competitor_name"]
+      }
+    },
+    {
+      "name": "search_market_news",
+      "description": "Search and analyze recent market news, industry trends, and competitor developments",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Keywords to search for in news and articles"
+          },
+          "time_period": {
+            "type": "string",
+            "enum": ["24h", "7d", "30d", "90d"],
+            "description": "Time period to search (default: 7d)",
+            "default": "7d"
+          },
+          "include_competitors": {
+            "type": "boolean",
+            "description": "Include competitor news in results",
+            "default": true
+          }
+        },
+        "required": ["keywords"]
+      }
+    }
+  ],
+  "recordingEnabled": true,
+  "silenceTimeoutSeconds": 40,
+  "maxDurationSeconds": 1200,
+  "backgroundSound": "off",
+  "backchannelingEnabled": false,
+  "endCallFunctionEnabled": false
+}

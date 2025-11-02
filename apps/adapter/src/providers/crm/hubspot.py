@@ -19,12 +19,14 @@ from ..base import (
     RateLimitError,
     ProviderError
 )
+from ..factory import register_provider, ProviderType
 from ...core.logging import get_logger
 
 
 logger = get_logger(__name__)
 
 
+@register_provider(ProviderType.CRM, "hubspot")
 class HubSpotProvider(CRMProvider):
     """
     HubSpot CRM provider implementation using HubSpot API v3.

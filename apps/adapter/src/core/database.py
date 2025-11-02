@@ -85,7 +85,7 @@ def create_engine(
 
 # Global engine instance
 engine: AsyncEngine = create_engine(
-    echo=settings.DEBUG,
+    echo=settings.debug,
 )
 
 # Session factory

@@ -113,6 +113,18 @@ class Settings(BaseSettings):
         default=False,
         description="Enable HubSpot provider"
     )
+    hubspot_auth_type: str = Field(
+        default="api_key",
+        description="HubSpot authentication type"
+    )
+    hubspot_access_token: Optional[str] = Field(
+        default=None,
+        description="HubSpot OAuth access token"
+    )
+    hubspot_api_base: str = Field(
+        default="https://api.hubapi.com",
+        description="HubSpot API base URL"
+    )
     
     # Provider Credentials - Salesforce
     salesforce_client_id: Optional[str] = Field(
@@ -161,6 +173,14 @@ class Settings(BaseSettings):
         default=False,
         description="Enable Zendesk provider"
     )
+    zendesk_auth_type: str = Field(
+        default="api_token",
+        description="Zendesk authentication type"
+    )
+    zendesk_api_base: Optional[str] = Field(
+        default=None,
+        description="Zendesk API base URL (auto-generated from subdomain if not provided)"
+    )
     
     # Provider Credentials - Google Calendar
     google_credentials_json: Optional[str] = Field(
@@ -174,6 +194,26 @@ class Settings(BaseSettings):
     google_enabled: bool = Field(
         default=False,
         description="Enable Google Calendar provider"
+    )
+    google_auth_type: str = Field(
+        default="oauth2",
+        description="Google authentication type"
+    )
+    google_access_token: Optional[str] = Field(
+        default=None,
+        description="Google OAuth access token"
+    )
+    google_refresh_token: Optional[str] = Field(
+        default=None,
+        description="Google OAuth refresh token"
+    )
+    google_client_id: Optional[str] = Field(
+        default=None,
+        description="Google OAuth client ID"
+    )
+    google_client_secret: Optional[str] = Field(
+        default=None,
+        description="Google OAuth client secret"
     )
     
     # Provider Credentials - Gmail

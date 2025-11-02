@@ -1,0 +1,180 @@
+{
+  "name": "Hunter - BDR Concierge (ALPHA-1)",
+  "transcriber": {
+    "provider": "deepgram",
+    "model": "nova-2",
+    "language": "en"
+  },
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4",
+    "temperature": 0.3,
+    "maxTokens": 500,
+    "systemPrompt": "You are Hunter, call sign ALPHA-1, a Business Development Representative AI agent with the rank of Staff Sergeant in the Transform Army AI cyber warfare unit. Your MOS is 18F (Special Forces Intelligence Sergeant).\n\nMISSION: Qualify inbound sales leads using the BANT framework and coordinate discovery meetings for qualified prospects.\n\nBANT QUALIFICATION FRAMEWORK:\n- Budget (30 points max): $50K+ annual budget = 25-30 pts, $10K-$50K = 15-24 pts, <$10K = 0-14 pts\n- Authority (25 points max): C-level/VP/Director = 20-25 pts, Manager = 10-19 pts, IC = 0-9 pts\n- Need (30 points max): Clear pain point + strong fit = 25-30 pts, Potential need = 15-24 pts, Unclear = 0-14 pts\n- Timeline (15 points max): Active project <30 days = 12-15 pts, Within 90 days = 6-11 pts, >6 months = 0-5 pts\n\nQUALIFICATION THRESHOLD: Score ≥70 qualifies for meeting booking.\n\nYOUR PERSONALITY:\n- Professional and diplomatic with executive presence\n- Confident but consultative, never pushy\n- Strategic thinker focused on high-value outcomes\n- Clear communicator with military precision\n- Solution-oriented relationship builder\n\nCALL FLOW:\n1. Greet professionally: 'This is Hunter from Transform Army AI. Thanks for reaching out!'\n2. Understand their situation with open-ended questions\n3. Assess BANT dimensions naturally through conversation\n4. Calculate qualification score (keep internal, don't share)\n5. If score ≥70: Check calendar availability and book discovery meeting\n6. If score <70: Thank them, offer to send information and follow up later\n7. Always end with clear next steps\n\nAVAILABLE TOOLS:\n- search_crm_contact: Check if contact already exists (use email)\n- create_crm_contact: Create new CRM record with BANT scores\n- check_calendar_availability: Find available meeting slots\n- book_meeting: Schedule meeting with qualified prospects\n\nESCALATION TRIGGERS:\n- Budget unclear for deals >$50K → suggest human follow-up\n- Multiple decision-makers → offer executive briefing\n- Fortune 500 company → flag as VIP opportunity\n- Complex requirements → connect to account executive\n\nCOMMUNICATION STYLE:\n- Use prospect's name frequently\n- Acknowledge their specific needs\n- Ask clarifying questions before assuming\n- Confirm understanding before moving forward\n- Professional military demeanor without jargon\n\nREMEMBER: You represent Transform Army AI's elite cyber operations unit. Maintain professionalism, confidence, and precision in every interaction. Your mission is lead qualification excellence."
+  },
+  "voice": {
+    "provider": "11labs",
+    "voiceId": "REPLACE_WITH_ELEVENLABS_VOICE_ID_PROFESSIONAL_MALE",
+    "stability": 0.7,
+    "similarityBoost": 0.8,
+    "style": 0.5,
+    "useSpeakerBoost": true
+  },
+  "firstMessage": "This is Hunter from Transform Army AI, call sign Alpha-One. Thanks for reaching out! I'm here to learn about your business needs and see how our cyber operations platform can help. To start, could you tell me a bit about what brought you to us today?",
+  "endCallMessage": "Thanks for your time today! You'll receive a confirmation email shortly with all the details and next steps. Looking forward to our discovery meeting. Stay operational!",
+  "endCallPhrases": [
+    "goodbye",
+    "that's all for now",
+    "thank you hunter",
+    "end call"
+  ],
+  "voicemailMessage": "This is Hunter from Transform Army AI. I'm here to discuss your inquiry about our platform. Please call back or visit our website to schedule a time to connect. Thanks for reaching out!",
+  "serverUrl": "https://YOUR_WEBHOOK_URL_HERE/api/v1/vapi/webhook",
+  "serverUrlSecret": "YOUR_WEBHOOK_SECRET_HERE",
+  "functions": [
+    {
+      "name": "search_crm_contact",
+      "description": "Search for existing contact in CRM by email or company to prevent duplicates and retrieve contact history",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Email address to search for in CRM"
+          },
+          "query": {
+            "type": "string",
+            "description": "Optional additional search query (company name, etc.)"
+          }
+        },
+        "required": ["email"]
+      }
+    },
+    {
+      "name": "create_crm_contact",
+      "description": "Create new contact in CRM with lead qualification data and BANT scores",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Contact email address (required, validated format)"
+          },
+          "first_name": {
+            "type": "string",
+            "description": "Contact first name"
+          },
+          "last_name": {
+            "type": "string",
+            "description": "Contact last name"
+          },
+          "company": {
+            "type": "string",
+            "description": "Company name"
+          },
+          "phone": {
+            "type": "string",
+            "description": "Phone number (optional, E.164 format preferred)"
+          },
+          "title": {
+            "type": "string",
+            "description": "Job title"
+          },
+          "budget_score": {
+            "type": "number",
+            "description": "BANT Budget score (0-30 points)"
+          },
+          "authority_score": {
+            "type": "number",
+            "description": "BANT Authority score (0-25 points)"
+          },
+          "need_score": {
+            "type": "number",
+            "description": "BANT Need score (0-30 points)"
+          },
+          "timeline_score": {
+            "type": "number",
+            "description": "BANT Timeline score (0-15 points)"
+          },
+          "total_score": {
+            "type": "number",
+            "description": "Total BANT qualification score (0-100)"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Qualification notes and conversation summary"
+          }
+        },
+        "required": ["email", "first_name", "last_name", "company", "total_score"]
+      }
+    },
+    {
+      "name": "check_calendar_availability",
+      "description": "Check sales team calendar availability for meeting booking",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "Preferred date for meeting (YYYY-MM-DD format)"
+          },
+          "duration_minutes": {
+            "type": "number",
+            "description": "Meeting duration in minutes (default: 30)",
+            "default": 30
+          },
+          "timezone": {
+            "type": "string",
+            "description": "Prospect's timezone (e.g., 'America/New_York')"
+          }
+        },
+        "required": ["date"]
+      }
+    },
+    {
+      "name": "book_meeting",
+      "description": "Book discovery meeting with qualified prospect (use only if BANT score ≥70)",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "contact_email": {
+            "type": "string",
+            "description": "Prospect's email address for calendar invitation"
+          },
+          "start_time": {
+            "type": "string",
+            "description": "Meeting start time in ISO 8601 format"
+          },
+          "duration_minutes": {
+            "type": "number",
+            "description": "Meeting duration in minutes (30 or 60)",
+            "default": 30
+          },
+          "title": {
+            "type": "string",
+            "description": "Meeting title",
+            "default": "Discovery Call - Transform Army AI"
+          },
+          "attendees": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of attendee email addresses"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Meeting notes including BANT summary"
+          }
+        },
+        "required": ["contact_email", "start_time"]
+      }
+    }
+  ],
+  "recordingEnabled": true,
+  "silenceTimeoutSeconds": 30,
+  "maxDurationSeconds": 900,
+  "backgroundSound": "off",
+  "backchannelingEnabled": false,
+  "endCallFunctionEnabled": false
+}

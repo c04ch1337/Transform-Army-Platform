@@ -1,0 +1,196 @@
+/**
+ * Transform Army AI - Military/Hacker Theme
+ * Tactical command center aesthetic with cyber warfare elements
+ */
+
+/* ========================================
+   TACTICAL UTILITIES
+   ======================================== */
+
+.tactical-grid {
+  background-image: 
+    linear-gradient(rgba(74, 124, 89, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(74, 124, 89, 0.1) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.terminal-glow {
+  text-shadow: 0 0 10px currentColor, 0 0 20px currentColor;
+}
+
+.hexagon {
+  clip-path: polygon(30% 0%, 70% 0%, 100% 50%, 70% 100%, 30% 100%, 0% 50%);
+}
+
+.scan-lines {
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+}
+
+/* ========================================
+   RANK BADGES
+   ======================================== */
+
+.rank-badge {
+  @apply inline-flex items-center gap-1 px-2 py-1;
+  @apply bg-tactical-black border border-tactical-gold/30;
+  @apply font-mono text-xs uppercase tracking-wider;
+  @apply hexagon;
+}
+
+.rank-stripe {
+  @apply h-3 w-1 bg-tactical-gold;
+}
+
+/* ========================================
+   MILITARY STATUS INDICATORS
+   ======================================== */
+
+.status-operational {
+  @apply bg-terminal-green/20 text-terminal-green border-terminal-green/30;
+}
+
+.status-degraded {
+  @apply bg-terminal-amber/20 text-terminal-amber border-terminal-amber/30;
+}
+
+.status-critical {
+  @apply bg-terminal-red/20 text-terminal-red border-terminal-red/30;
+}
+
+/* ========================================
+   TACTICAL BUTTONS
+   ======================================== */
+
+.btn-tactical {
+  @apply bg-tactical-green hover:bg-tactical-green-light;
+  @apply text-white font-tactical font-semibold;
+  @apply border border-tactical-green-dark;
+  @apply transition-all duration-200;
+  @apply shadow-lg hover:shadow-tactical-green/50;
+}
+
+.btn-ops {
+  @apply bg-tactical-black hover:bg-tactical-black-light;
+  @apply text-tactical-gold border-tactical-gold/30;
+  @apply font-mono uppercase tracking-wider;
+}
+
+/* ========================================
+   COMMAND CENTER PANELS
+   ======================================== */
+
+.command-panel {
+  @apply bg-tactical-black/50 backdrop-blur-sm;
+  @apply border border-tactical-green/20;
+  @apply rounded-lg p-4;
+  @apply tactical-grid scan-lines;
+}
+
+.intel-card {
+  @apply bg-gradient-to-br from-tactical-black to-tactical-black-light;
+  @apply border-l-4 border-tactical-blue;
+  @apply shadow-lg shadow-tactical-blue/10;
+}
+
+/* ========================================
+   TERMINAL EFFECTS
+   ======================================== */
+
+.terminal-text {
+  @apply font-mono text-terminal-green terminal-glow;
+  @apply tracking-wide;
+}
+
+.terminal-cursor::after {
+  content: '█';
+  @apply animate-pulse-glow text-terminal-green;
+}
+
+/* ========================================
+   TACTICAL TYPOGRAPHY
+   ======================================== */
+
+.heading-tactical {
+  @apply font-tactical font-bold uppercase tracking-wider;
+  @apply text-tactical-gold;
+}
+
+.label-ops {
+  @apply font-mono text-xs uppercase tracking-widest;
+  @apply text-tactical-green-light;
+}
+
+.code-block {
+  @apply font-mono bg-terminal-background;
+  @apply text-terminal-green p-4 rounded;
+  @apply border border-terminal-green/30;
+}
+
+/* ========================================
+   RADAR & MONITORING
+   ======================================== */
+
+.radar-pulse {
+  @apply relative;
+}
+
+.radar-pulse::before {
+  content: '';
+  @apply absolute inset-0 rounded-full;
+  @apply bg-tactical-green/20 animate-ping;
+}
+
+.signal-strength {
+  @apply flex gap-0.5;
+}
+
+.signal-bar {
+  @apply w-1 bg-tactical-green;
+  @apply transition-all duration-300;
+}
+
+/* ========================================
+   MISSION STATUS
+   ======================================== */
+
+.mission-success {
+  @apply bg-terminal-green/10 text-terminal-green;
+  @apply border border-terminal-green/30;
+}
+
+.mission-failure {
+  @apply bg-terminal-red/10 text-terminal-red;
+  @apply border border-terminal-red/30;
+}
+
+.mission-pending {
+  @apply bg-terminal-amber/10 text-terminal-amber;
+  @apply border border-terminal-amber/30;
+}
+
+/* ========================================
+   ACCESSIBILITY
+   ======================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-radar-sweep,
+  .animate-pulse-glow,
+  .animate-scan-line {
+    animation: none;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .tactical-grid {
+    background-image: 
+      linear-gradient(rgba(74, 124, 89, 0.3) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(74, 124, 89, 0.3) 1px, transparent 1px);
+  }
+}

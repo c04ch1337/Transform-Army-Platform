@@ -9,6 +9,7 @@ from typing import Dict, Any, Optional, Annotated
 from datetime import datetime
 from uuid import uuid4
 from fastapi import Header, Depends, HTTPException, status, Request
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +18,8 @@ from .database import get_db
 from .exceptions import (
     TenantNotFoundException,
     InvalidAPIKeyException,
-    ProviderException
+    ProviderException,
+    AuthenticationError
 )
 from .logging import get_logger
 from ..providers.factory import get_factory
@@ -27,30 +29,100 @@ from ..providers.base import CRMProvider, HelpdeskProvider, CalendarProvider
 logger = get_logger(__name__)
 
 
+class TenantAuth(BaseModel):
+    """Authenticated tenant information."""
+    
+    tenant_id: str
+    tenant_name: str
+    tenant_slug: str
+    provider_configs: dict
+    is_active: bool
+    api_key_hash: str
+
+
+async def get_authenticated_tenant(
+    x_api_key: str = Header(..., description="API key for authentication"),
+    db: AsyncSession = Depends(get_db)
+) -> TenantAuth:
+    """Authenticate request using API key and return tenant information.
+    
+    This replaces the stub authentication with real database-backed validation.
+    
+    Args:
+        x_api_key: API key from X-API-Key header
+        db: Database session dependency
+        
+    Returns:
+        TenantAuth instance with authenticated tenant information
+        
+    Raises:
+        HTTPException: 401 if authentication fails
+        HTTPException: 403 if tenant is inactive
+    """
+    try:
+        # Import here to avoid circular dependency
+        from ..services.auth import AuthService
+        
+        # Initialize authentication service
+        auth_service = AuthService(db)
+        
+        # Authenticate using API key
+        tenant = await auth_service.authenticate_api_key(x_api_key)
+        
+        # Return tenant authentication info
+        return TenantAuth(
+            tenant_id=str(tenant.id),
+            tenant_name=tenant.name,
+            tenant_slug=tenant.slug,
+            provider_configs=tenant.provider_configs,
+            is_active=tenant.is_active,
+            api_key_hash=tenant.api_key_hash
+        )
+        
+    except AuthenticationError as e:
+        logger.warning(f"Authentication failed: {e.message}")
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "error": "authentication_failed",
+                "message": e.message,
+                "details": e.details
+            }
+        )
+    except Exception as e:
+        logger.error(f"Unexpected authentication error: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "internal_server_error",
+                "message": "Authentication service error"
+            }
+        )
+
+
+# Keep backward compatibility alias
 async def validate_api_key(
     x_api_key: Annotated[Optional[str], Header()] = None,
     x_tenant_id: Annotated[Optional[str], Header()] = None,
     db: AsyncSession = Depends(get_db)
 ) -> Dict[str, Any]:
     """
-    Validate API key and return tenant configuration.
+    Legacy validate_api_key function for backward compatibility.
     
-    This dependency extracts and validates the API key from the X-API-Key header
-    and/or tenant ID from X-Tenant-ID header.
-    
-    Args:
-        x_api_key: API key from X-API-Key header
-        x_tenant_id: Tenant ID from X-Tenant-ID header
-        db: Database session
-        
-    Returns:
-        Dictionary containing tenant configuration
-        
-    Raises:
-        InvalidAPIKeyException: If API key is missing or invalid
-        TenantNotFoundException: If tenant is not found or inactive
+    Deprecated: Use get_authenticated_tenant instead.
     """
-    # For development/testing, allow placeholder credentials
+    # If x_api_key is provided, use new authentication
+    if x_api_key:
+        tenant_auth = await get_authenticated_tenant(x_api_key=x_api_key, db=db)
+        return {
+            "tenant_id": tenant_auth.tenant_id,
+            "tenant_name": tenant_auth.tenant_name,
+            "provider_configs": tenant_auth.provider_configs,
+            "is_active": tenant_auth.is_active,
+            "api_key": x_api_key
+        }
+    
+    # Fallback for development mode with x_tenant_id
     if settings.environment == "development" and x_tenant_id:
         logger.debug(f"Development mode: Using tenant ID {x_tenant_id}")
         return {
@@ -60,65 +132,55 @@ async def validate_api_key(
             "is_active": True
         }
     
-    # Validate that at least one authentication method is provided
-    if not x_api_key and not x_tenant_id:
-        raise InvalidAPIKeyException(
-            message="Authentication required. Provide X-API-Key or X-Tenant-ID header",
-            details={"headers_checked": ["X-API-Key", "X-Tenant-ID"]}
-        )
-    
-    # In production, you would query the database to validate the API key
-    # For now, return a mock tenant configuration
-    # TODO: Implement actual database lookup when tenant model is ready
-    
-    tenant_id = x_tenant_id or "default-tenant"
-    
-    return {
-        "tenant_id": tenant_id,
-        "tenant_name": f"Tenant {tenant_id}",
-        "provider_configs": {},
-        "is_active": True,
-        "api_key": x_api_key
-    }
+    raise InvalidAPIKeyException(
+        message="Authentication required. Provide X-API-Key header",
+        details={"headers_checked": ["X-API-Key"]}
+    )
 
 
 async def get_tenant_config(
-    tenant_auth: Annotated[Dict[str, Any], Depends(validate_api_key)]
+    tenant_auth: Annotated[TenantAuth, Depends(get_authenticated_tenant)]
 ) -> Dict[str, Any]:
     """
-    Get tenant configuration from validated API key.
+    Get tenant configuration from authenticated tenant.
     
-    This dependency builds on validate_api_key to provide tenant configuration
+    This dependency builds on get_authenticated_tenant to provide tenant configuration
     to route handlers.
     
     Args:
-        tenant_auth: Validated tenant authentication info
+        tenant_auth: Authenticated tenant information
         
     Returns:
         Tenant configuration dictionary
     """
-    if not tenant_auth.get("is_active"):
+    if not tenant_auth.is_active:
         raise TenantNotFoundException(
-            tenant_id=tenant_auth.get("tenant_id", "unknown"),
+            tenant_id=tenant_auth.tenant_id,
             message="Tenant account is inactive"
         )
     
-    return tenant_auth
+    return {
+        "tenant_id": tenant_auth.tenant_id,
+        "tenant_name": tenant_auth.tenant_name,
+        "tenant_slug": tenant_auth.tenant_slug,
+        "provider_configs": tenant_auth.provider_configs,
+        "is_active": tenant_auth.is_active
+    }
 
 
 def get_tenant_id(
-    tenant_config: Annotated[Dict[str, Any], Depends(get_tenant_config)]
+    tenant_auth: Annotated[TenantAuth, Depends(get_authenticated_tenant)]
 ) -> str:
     """
-    Extract tenant ID from tenant configuration.
+    Extract tenant ID from authenticated tenant.
     
     Args:
-        tenant_config: Tenant configuration dictionary
+        tenant_auth: Authenticated tenant information
         
     Returns:
         Tenant ID string
     """
-    return tenant_config["tenant_id"]
+    return tenant_auth.tenant_id
 
 
 def get_correlation_id(request: Request) -> str:
@@ -371,10 +433,9 @@ async def log_action(
     db: AsyncSession = Depends(get_db)
 ) -> None:
     """
-    Log an action to the database.
+    Log an action to the database for audit trail and analytics.
     
-    This function logs every action performed through the adapter,
-    including successes and failures.
+    This replaces the stub implementation with real database persistence.
     
     Args:
         tenant_id: ID of the tenant
@@ -389,42 +450,129 @@ async def log_action(
         db: Database session
     """
     try:
-        # TODO: Implement actual database logging
-        # For now, just log to application logger
-        log_data = {
-            "tenant_id": tenant_id,
-            "action_type": action_type,
-            "provider_name": provider_name,
-            "status": status,
-            "execution_time_ms": execution_time_ms,
-            "error_message": error_message,
-            "metadata": metadata
-        }
+        from uuid import UUID as UUID_TYPE
+        from ..models.action_log import ActionLog, ActionType as ActionTypeEnum, ActionStatus as ActionStatusEnum
+        from ..repositories.action_log import ActionLogRepository
         
-        if status == "success":
-            logger.info(f"Action logged: {action_type}", extra=log_data)
-        else:
-            logger.error(f"Action failed: {action_type}", extra=log_data)
+        # Convert string tenant_id to UUID
+        tenant_uuid = UUID_TYPE(tenant_id) if tenant_id else None
         
-        # When models are available, this would be:
-        # action_log = ActionLog(
-        #     id=uuid4(),
-        #     tenant_id=tenant_id,
-        #     action_type=action_type,
-        #     provider_name=provider_name,
-        #     request_payload=request_payload,
-        #     response_data=response_data,
-        #     status=status,
-        #     execution_time_ms=execution_time_ms,
-        #     error_message=error_message,
-        #     metadata=metadata
-        # )
-        # db.add(action_log)
-        # await db.commit()
+        # Convert string action_type to enum
+        # Map common action types to enum values
+        action_type_lower = action_type.lower()
+        try:
+            # Try direct enum match first
+            action_type_enum = ActionTypeEnum(action_type_lower)
+        except ValueError:
+            # Map common patterns to enum values
+            if "crm" in action_type_lower:
+                if "create" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.CRM_CREATE
+                elif "update" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.CRM_UPDATE
+                elif "delete" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.CRM_DELETE
+                elif "get" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.CRM_GET
+                elif "list" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.CRM_LIST
+                elif "search" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.CRM_SEARCH
+                else:
+                    action_type_enum = ActionTypeEnum.CRM_CREATE
+            elif "helpdesk" in action_type_lower or "ticket" in action_type_lower:
+                if "create" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.HELPDESK_CREATE_TICKET
+                elif "update" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.HELPDESK_UPDATE_TICKET
+                elif "get" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.HELPDESK_GET_TICKET
+                elif "list" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.HELPDESK_LIST_TICKETS
+                elif "comment" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.HELPDESK_ADD_COMMENT
+                else:
+                    action_type_enum = ActionTypeEnum.HELPDESK_CREATE_TICKET
+            elif "calendar" in action_type_lower or "event" in action_type_lower:
+                if "create" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.CALENDAR_CREATE_EVENT
+                elif "update" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.CALENDAR_UPDATE_EVENT
+                elif "delete" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.CALENDAR_DELETE_EVENT
+                elif "get" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.CALENDAR_GET_EVENT
+                elif "list" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.CALENDAR_LIST_EVENTS
+                else:
+                    action_type_enum = ActionTypeEnum.CALENDAR_CREATE_EVENT
+            elif "email" in action_type_lower:
+                if "send" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.EMAIL_SEND
+                elif "get" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.EMAIL_GET
+                elif "list" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.EMAIL_LIST
+                elif "search" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.EMAIL_SEARCH
+                else:
+                    action_type_enum = ActionTypeEnum.EMAIL_SEND
+            elif "knowledge" in action_type_lower:
+                if "store" in action_type_lower or "create" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.KNOWLEDGE_STORE
+                elif "search" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.KNOWLEDGE_SEARCH
+                elif "get" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.KNOWLEDGE_GET
+                elif "delete" in action_type_lower:
+                    action_type_enum = ActionTypeEnum.KNOWLEDGE_DELETE
+                else:
+                    action_type_enum = ActionTypeEnum.KNOWLEDGE_SEARCH
+            else:
+                # Default to CRM_CREATE if can't determine
+                logger.warning(f"Unknown action type: {action_type}, defaulting to CRM_CREATE")
+                action_type_enum = ActionTypeEnum.CRM_CREATE
+        
+        # Convert string status to enum
+        try:
+            status_enum = ActionStatusEnum(status.upper())
+        except ValueError:
+            # Default to FAILURE if unknown status
+            logger.warning(f"Unknown status: {status}, defaulting to FAILURE")
+            status_enum = ActionStatusEnum.FAILURE
+        
+        # Create action log instance
+        action_log = ActionLog(
+            tenant_id=tenant_uuid,
+            action_type=action_type_enum,
+            provider_name=provider_name,
+            request_payload=request_payload or {},
+            response_data=response_data,
+            status=status_enum,
+            error_message=error_message,
+            execution_time_ms=execution_time_ms or 0,
+            metadata=metadata
+        )
+        
+        # Save to database
+        repo = ActionLogRepository(db)
+        await repo.create(action_log)
+        
+        # Note: Session will be committed by the endpoint's transaction
+        
+        logger.info(
+            f"Action logged to database: {action_type} via {provider_name} "
+            f"[status={status}, execution_time={execution_time_ms}ms]"
+        )
         
     except Exception as e:
         # Don't fail the request if logging fails
-        logger.error(f"Failed to log action: {e}", exc_info=e)
+        logger.error(f"Failed to log action to database: {str(e)}", exc_info=True)
+        # Fall back to application logger only
+        logger.info(
+            f"Action executed: {action_type} via {provider_name} "
+            f"[status={status}, execution_time={execution_time_ms}ms]"
+        )
 
 
 class ActionLogger:

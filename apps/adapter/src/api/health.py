@@ -105,3 +105,27 @@ async def liveness_check():
         "status": "alive",
         "timestamp": datetime.utcnow().isoformat() + "Z"
     }
+
+
+@router.get("/providers", status_code=status.HTTP_200_OK)
+async def provider_registry_status():
+    """
+    Get current provider registry status.
+    
+    Shows which providers are registered and available.
+    """
+    from ..providers.factory import provider_registry
+    
+    registry_status = {}
+    for provider_type, providers in provider_registry._registry.items():
+        registry_status[provider_type.value] = {
+            "count": len(providers),
+            "providers": list(providers.keys()),
+            "classes": [cls.__name__ for cls in providers.values()]
+        }
+    
+    return {
+        "status": "ok",
+        "total_providers": sum(len(p) for p in provider_registry._registry.values()),
+        "by_type": registry_status
+    }
