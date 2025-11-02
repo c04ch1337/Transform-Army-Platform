@@ -1,0 +1,92 @@
+# Codecov Configuration
+# https://docs.codecov.com/docs/codecov-yaml
+
+coverage:
+  precision: 2
+  round: down
+  range: "70...100"
+  
+  status:
+    project:
+      default:
+        target: 85%
+        threshold: 2%
+        if_ci_failed: error
+        
+    patch:
+      default:
+        target: 80%
+        threshold: 5%
+        if_ci_failed: error
+
+  # Component-specific targets
+  targets:
+    - name: backend
+      flags:
+        - backend
+      target: 85%
+      threshold: 2%
+      
+    - name: frontend
+      flags:
+        - frontend
+      target: 85%
+      threshold: 2%
+
+# Flags for organizing coverage
+flags:
+  backend:
+    paths:
+      - apps/adapter/src/
+    carryforward: true
+    
+  frontend:
+    paths:
+      - apps/web/src/
+    carryforward: true
+
+# Comment configuration for pull requests
+comment:
+  layout: "reach,diff,flags,tree,files"
+  behavior: default
+  require_changes: false
+  
+  # Format of the comment
+  after_n_builds: 2
+
+# Ignore paths from coverage
+ignore:
+  - "apps/adapter/tests/"
+  - "apps/adapter/alembic/"
+  - "apps/adapter/scripts/"
+  - "apps/web/tests/"
+  - "apps/web/__tests__/"
+  - "apps/web/.next/"
+  - "apps/web/public/"
+  - "**/node_modules/"
+  - "**/__pycache__/"
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*.spec.ts"
+  - "**/*.spec.tsx"
+
+# GitHub Checks
+github_checks:
+  annotations: true
+
+# Codecov notifications
+slack:
+  notifications:
+    # Configure in Codecov UI
+    - url: secret:SLACK_WEBHOOK
+      threshold: 1%
+      only_pulls: false
+      branches: [main, develop]
+      flags: [backend, frontend]
+      message: "Coverage {{changed}} for {{owner}}/{{repo}}"
+
+# Codecov pull request annotations
+annotations:
+  - type: coverage
+    state: success
+    threshold: 1%

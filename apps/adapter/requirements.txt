@@ -22,10 +22,11 @@ redis==5.0.1
 httpx==0.26.0
 
 # AI and LLM frameworks
-langchain==0.1.0
-langchain-community==0.0.20
-langchain-core==0.1.0
-langgraph==0.0.50
+# Using compatible ranges to avoid dependency conflicts
+langchain>=0.1.0,<0.2.0
+langchain-community>=0.0.20,<0.1.0
+langchain-core>=0.1.52,<0.2.0
+langgraph>=0.0.50,<0.1.0
 openai==1.6.0
 
 # Security

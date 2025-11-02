@@ -6,8 +6,8 @@ import sys
 from pathlib import Path
 
 # Add the src directory to the path
-src_dir = Path(__file__).parent / "src"
-sys.path.insert(0, str(src_dir))
+# Add current directory to path
+sys.path.insert(0, str(Path(__file__).parent))
 
 # Add packages directory for schema imports
 packages_dir = Path(__file__).parent.parent.parent / "packages" / "schema" / "src" / "python"

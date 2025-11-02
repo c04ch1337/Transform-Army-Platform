@@ -11,6 +11,7 @@ import { z } from 'zod';
  * Predefined agent roles in the system.
  */
 export const AgentRoleSchema = z.enum([
+  // Generic roles
   'orchestrator',
   'researcher',
   'analyst',
@@ -19,6 +20,14 @@ export const AgentRoleSchema = z.enum([
   'executor',
   'specialist',
   'custom',
+  
+  // Business-specific agent roles
+  'bdr_concierge',
+  'support_concierge',
+  'research_recon',
+  'ops_sapper',
+  'knowledge_librarian',
+  'qa_auditor',
 ]);
 export type AgentRole = z.infer<typeof AgentRoleSchema>;
 

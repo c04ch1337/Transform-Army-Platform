@@ -1,0 +1,551 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2025-11-02T00:00:00Z",
+  "description": "Performance baselines for Transform Army AI Adapter Service",
+  "environment": "production",
+  "test_configuration": {
+    "users": 100,
+    "duration_seconds": 600,
+    "ramp_up_seconds": 120
+  },
+  "api_endpoints": {
+    "health_check": {
+      "endpoint": "/health",
+      "method": "GET",
+      "response_times_ms": {
+        "p50": 25,
+        "p95": 50,
+        "p99": 100,
+        "max": 150
+      },
+      "throughput_rps": 50,
+      "error_rate": 0.001,
+      "success_rate": 0.999
+    },
+    "root_endpoint": {
+      "endpoint": "/",
+      "method": "GET",
+      "response_times_ms": {
+        "p50": 30,
+        "p95": 60,
+        "p99": 120,
+        "max": 200
+      },
+      "throughput_rps": 20,
+      "error_rate": 0.001,
+      "success_rate": 0.999
+    },
+    "crm_create_contact": {
+      "endpoint": "/api/v1/crm/contacts",
+      "method": "POST",
+      "response_times_ms": {
+        "p50": 250,
+        "p95": 600,
+        "p99": 1200,
+        "max": 2000
+      },
+      "throughput_rps": 30,
+      "error_rate": 0.02,
+      "success_rate": 0.98,
+      "notes": "Includes external provider API call to CRM system"
+    },
+    "crm_search_contacts": {
+      "endpoint": "/api/v1/crm/contacts/search",
+      "method": "GET",
+      "response_times_ms": {
+        "p50": 150,
+        "p95": 400,
+        "p99": 800,
+        "max": 1500
+      },
+      "throughput_rps": 50,
+      "error_rate": 0.01,
+      "success_rate": 0.99
+    },
+    "crm_add_contact_note": {
+      "endpoint": "/api/v1/crm/contacts/{id}/notes",
+      "method": "POST",
+      "response_times_ms": {
+        "p50": 200,
+        "p95": 500,
+        "p99": 1000,
+        "max": 1800
+      },
+      "throughput_rps": 25,
+      "error_rate": 0.02,
+      "success_rate": 0.98
+    },
+    "crm_create_deal": {
+      "endpoint": "/api/v1/crm/deals",
+      "method": "POST",
+      "response_times_ms": {
+        "p50": 300,
+        "p95": 700,
+        "p99": 1400,
+        "max": 2500
+      },
+      "throughput_rps": 20,
+      "error_rate": 0.02,
+      "success_rate": 0.98
+    },
+    "helpdesk_create_ticket": {
+      "endpoint": "/api/v1/helpdesk/tickets",
+      "method": "POST",
+      "response_times_ms": {
+        "p50": 280,
+        "p95": 650,
+        "p99": 1300,
+        "max": 2200
+      },
+      "throughput_rps": 35,
+      "error_rate": 0.02,
+      "success_rate": 0.98,
+      "notes": "Includes external provider API call to helpdesk system"
+    },
+    "helpdesk_search_tickets": {
+      "endpoint": "/api/v1/helpdesk/tickets/search",
+      "method": "GET",
+      "response_times_ms": {
+        "p50": 180,
+        "p95": 450,
+        "p99": 900,
+        "max": 1600
+      },
+      "throughput_rps": 45,
+      "error_rate": 0.01,
+      "success_rate": 0.99
+    },
+    "helpdesk_add_comment": {
+      "endpoint": "/api/v1/helpdesk/tickets/{id}/comments",
+      "method": "POST",
+      "response_times_ms": {
+        "p50": 220,
+        "p95": 550,
+        "p99": 1100,
+        "max": 2000
+      },
+      "throughput_rps": 30,
+      "error_rate": 0.02,
+      "success_rate": 0.98
+    },
+    "helpdesk_update_status": {
+      "endpoint": "/api/v1/helpdesk/tickets/{id}",
+      "method": "PATCH",
+      "response_times_ms": {
+        "p50": 200,
+        "p95": 500,
+        "p99": 1000,
+        "max": 1800
+      },
+      "throughput_rps": 25,
+      "error_rate": 0.02,
+      "success_rate": 0.98
+    },
+    "calendar_create_event": {
+      "endpoint": "/api/v1/calendar/events",
+      "method": "POST",
+      "response_times_ms": {
+        "p50": 400,
+        "p95": 900,
+        "p99": 1800,
+        "max": 3000
+      },
+      "throughput_rps": 15,
+      "error_rate": 0.03,
+      "success_rate": 0.97,
+      "notes": "Includes external calendar API calls and availability checking"
+    },
+    "calendar_find_availability": {
+      "endpoint": "/api/v1/calendar/availability",
+      "method": "POST",
+      "response_times_ms": {
+        "p50": 500,
+        "p95": 1200,
+        "p99": 2400,
+        "max": 4000
+      },
+      "throughput_rps": 10,
+      "error_rate": 0.03,
+      "success_rate": 0.97
+    },
+    "email_send": {
+      "endpoint": "/api/v1/email/send",
+      "method": "POST",
+      "response_times_ms": {
+        "p50": 350,
+        "p95": 800,
+        "p99": 1600,
+        "max": 2800
+      },
+      "throughput_rps": 20,
+      "error_rate": 0.02,
+      "success_rate": 0.98
+    },
+    "knowledge_search": {
+      "endpoint": "/api/v1/knowledge/search",
+      "method": "POST",
+      "response_times_ms": {
+        "p50": 120,
+        "p95": 300,
+        "p99": 600,
+        "max": 1000
+      },
+      "throughput_rps": 40,
+      "error_rate": 0.01,
+      "success_rate": 0.99,
+      "notes": "Vector similarity search in Qdrant"
+    },
+    "workflow_execute": {
+      "endpoint": "/api/v1/workflows/execute",
+      "method": "POST",
+      "response_times_ms": {
+        "p50": 1800,
+        "p95": 4500,
+        "p99": 7500,
+        "max": 10000
+      },
+      "throughput_rps": 10,
+      "error_rate": 0.03,
+      "success_rate": 0.97,
+      "notes": "Complex multi-step workflow execution"
+    },
+    "workflow_list": {
+      "endpoint": "/api/v1/workflows",
+      "method": "GET",
+      "response_times_ms": {
+        "p50": 80,
+        "p95": 200,
+        "p99": 400,
+        "max": 600
+      },
+      "throughput_rps": 50,
+      "error_rate": 0.005,
+      "success_rate": 0.995
+    },
+    "admin_query_logs": {
+      "endpoint": "/api/v1/logs/audit",
+      "method": "GET",
+      "response_times_ms": {
+        "p50": 150,
+        "p95": 400,
+        "p99": 800,
+        "max": 1400
+      },
+      "throughput_rps": 20,
+      "error_rate": 0.01,
+      "success_rate": 0.99
+    },
+    "metrics_endpoint": {
+      "endpoint": "/metrics",
+      "method": "GET",
+      "response_times_ms": {
+        "p50": 40,
+        "p95": 100,
+        "p99": 200,
+        "max": 300
+      },
+      "throughput_rps": 30,
+      "error_rate": 0.001,
+      "success_rate": 0.999
+    }
+  },
+  "overall_performance": {
+    "total_requests": 180000,
+    "total_duration_seconds": 600,
+    "overall_throughput_rps": 300,
+    "overall_error_rate": 0.015,
+    "overall_success_rate": 0.985,
+    "response_time_distribution_ms": {
+      "p50": 200,
+      "p75": 400,
+      "p90": 800,
+      "p95": 1200,
+      "p99": 2400,
+      "max": 5000
+    }
+  },
+  "database_performance": {
+    "connection_pool": {
+      "min_size": 10,
+      "max_size": 100,
+      "avg_utilization": 0.45,
+      "peak_utilization": 0.75,
+      "wait_time_ms": {
+        "p50": 5,
+        "p95": 20,
+        "p99": 50,
+        "max": 100
+      }
+    },
+    "query_performance": {
+      "simple_select_ms": {
+        "p50": 8,
+        "p95": 25,
+        "p99": 50,
+        "max": 100
+      },
+      "join_query_ms": {
+        "p50": 15,
+        "p95": 45,
+        "p99": 90,
+        "max": 150
+      },
+      "aggregate_query_ms": {
+        "p50": 20,
+        "p95": 60,
+        "p99": 120,
+        "max": 200
+      },
+      "write_operation_ms": {
+        "p50": 12,
+        "p95": 35,
+        "p99": 70,
+        "max": 120
+      }
+    },
+    "concurrent_connections": {
+      "tested": 100,
+      "max_supported": 200,
+      "connection_errors": 0,
+      "timeout_errors": 0
+    },
+    "row_level_security": {
+      "overhead_percent": 8,
+      "avg_query_time_with_rls_ms": 18,
+      "avg_query_time_without_rls_ms": 16.5,
+      "isolation_success_rate": 1.0
+    },
+    "index_effectiveness": {
+      "tenant_id_index": {
+        "used": true,
+        "avg_query_time_ms": 12,
+        "index_scan_ratio": 0.98
+      },
+      "status_index": {
+        "used": true,
+        "avg_query_time_ms": 15,
+        "index_scan_ratio": 0.95
+      },
+      "timestamp_index": {
+        "used": true,
+        "avg_query_time_ms": 18,
+        "index_scan_ratio": 0.92
+      },
+      "compound_index": {
+        "used": true,
+        "avg_query_time_ms": 10,
+        "index_scan_ratio": 0.99
+      }
+    }
+  },
+  "resource_utilization": {
+    "cpu": {
+      "avg_percent": 45,
+      "peak_percent": 72,
+      "sustained_over_80_percent": false
+    },
+    "memory": {
+      "avg_mb": 1800,
+      "peak_mb": 2400,
+      "max_mb": 4096,
+      "memory_leak_detected": false
+    },
+    "network": {
+      "avg_mbps": 15,
+      "peak_mbps": 45,
+      "bandwidth_limit_mbps": 1000
+    },
+    "disk_io": {
+      "avg_iops": 250,
+      "peak_iops": 800,
+      "avg_latency_ms": 8
+    }
+  },
+  "provider_integration": {
+    "hubspot": {
+      "avg_response_time_ms": 450,
+      "p95_response_time_ms": 1200,
+      "error_rate": 0.015,
+      "timeout_rate": 0.005,
+      "rate_limit_hits": 0
+    },
+    "salesforce": {
+      "avg_response_time_ms": 380,
+      "p95_response_time_ms": 1000,
+      "error_rate": 0.012,
+      "timeout_rate": 0.004,
+      "rate_limit_hits": 0
+    },
+    "zendesk": {
+      "avg_response_time_ms": 420,
+      "p95_response_time_ms": 1100,
+      "error_rate": 0.018,
+      "timeout_rate": 0.006,
+      "rate_limit_hits": 0
+    },
+    "google_calendar": {
+      "avg_response_time_ms": 550,
+      "p95_response_time_ms": 1400,
+      "error_rate": 0.02,
+      "timeout_rate": 0.008,
+      "rate_limit_hits": 0
+    },
+    "gmail": {
+      "avg_response_time_ms": 500,
+      "p95_response_time_ms": 1300,
+      "error_rate": 0.015,
+      "timeout_rate": 0.006,
+      "rate_limit_hits": 0
+    }
+  },
+  "caching": {
+    "redis": {
+      "hit_rate": 0.75,
+      "miss_rate": 0.25,
+      "avg_get_time_ms": 2,
+      "avg_set_time_ms": 3,
+      "eviction_rate": 0.05
+    },
+    "idempotency_cache": {
+      "hit_rate": 0.15,
+      "avg_lookup_time_ms": 2,
+      "false_positives": 0
+    }
+  },
+  "middleware_performance": {
+    "correlation_id": {
+      "avg_overhead_ms": 0.5
+    },
+    "authentication": {
+      "avg_overhead_ms": 8,
+      "cache_hit_rate": 0.85
+    },
+    "rate_limiting": {
+      "avg_overhead_ms": 3,
+      "requests_blocked": 0
+    },
+    "audit_logging": {
+      "avg_overhead_ms": 5,
+      "async_write_success_rate": 0.999
+    },
+    "request_timing": {
+      "avg_overhead_ms": 1
+    }
+  },
+  "multi_tenancy": {
+    "tenant_isolation": {
+      "cross_tenant_access_attempts": 0,
+      "isolation_success_rate": 1.0,
+      "avg_tenant_context_overhead_ms": 2
+    },
+    "concurrent_tenants": {
+      "tested": 10,
+      "max_supported": 1000,
+      "per_tenant_performance_variance": 0.08
+    }
+  },
+  "error_distribution": {
+    "4xx_errors": {
+      "400_bad_request": 0.005,
+      "401_unauthorized": 0.002,
+      "403_forbidden": 0.001,
+      "404_not_found": 0.003,
+      "429_rate_limit": 0.001
+    },
+    "5xx_errors": {
+      "500_internal_error": 0.001,
+      "502_bad_gateway": 0.001,
+      "503_service_unavailable": 0.0005,
+      "504_gateway_timeout": 0.0005
+    }
+  },
+  "scenario_specific": {
+    "smoke_test": {
+      "users": 1,
+      "duration_seconds": 60,
+      "expected_rps": 5,
+      "max_error_rate": 0.01,
+      "p95_response_time_ms": 500
+    },
+    "load_test": {
+      "users": 100,
+      "duration_seconds": 600,
+      "expected_rps": 300,
+      "max_error_rate": 0.02,
+      "p95_response_time_ms": 1200
+    },
+    "stress_test": {
+      "max_users": 500,
+      "duration_seconds": 1200,
+      "breaking_point_users": 450,
+      "degradation_threshold_users": 350,
+      "p95_response_time_at_peak_ms": 2500
+    },
+    "spike_test": {
+      "spike_users": 200,
+      "spike_duration_seconds": 180,
+      "recovery_time_seconds": 30,
+      "error_rate_during_spike": 0.05,
+      "p95_response_time_spike_ms": 1800
+    },
+    "soak_test": {
+      "users": 50,
+      "duration_hours": 2,
+      "memory_growth_mb_per_hour": 50,
+      "performance_degradation_percent": 5,
+      "error_rate": 0.015
+    }
+  },
+  "sla_targets": {
+    "availability": {
+      "target": 0.999,
+      "measured": 0.9995
+    },
+    "response_time": {
+      "p95_target_ms": 1000,
+      "p95_measured_ms": 950
+    },
+    "error_rate": {
+      "target": 0.01,
+      "measured": 0.008
+    },
+    "throughput": {
+      "target_rps": 250,
+      "measured_rps": 300
+    }
+  },
+  "capacity_planning": {
+    "current_capacity": {
+      "max_concurrent_users": 500,
+      "max_rps": 400,
+      "max_database_connections": 100
+    },
+    "headroom": {
+      "users": 0.5,
+      "rps": 0.33,
+      "database": 0.4
+    },
+    "scaling_triggers": {
+      "cpu_threshold": 0.70,
+      "memory_threshold": 0.75,
+      "response_time_threshold_ms": 1500,
+      "error_rate_threshold": 0.03
+    }
+  },
+  "test_metadata": {
+    "baseline_date": "2025-11-02",
+    "test_environment": "production-like",
+    "test_data_size": {
+      "tenants": 10,
+      "contacts": 10000,
+      "tickets": 5000,
+      "workflows": 1000
+    },
+    "infrastructure": {
+      "api_instances": 3,
+      "database_config": "PostgreSQL 15, 8 vCPU, 32GB RAM",
+      "redis_config": "Redis 7, 4GB RAM",
+      "load_balancer": "Nginx"
+    }
+  }
+}

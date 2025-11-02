@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 class AgentRole(str, Enum):
     """Predefined agent roles in the system."""
+    # Generic roles
     ORCHESTRATOR = "orchestrator"
     RESEARCHER = "researcher"
     ANALYST = "analyst"
@@ -21,6 +22,14 @@ class AgentRole(str, Enum):
     EXECUTOR = "executor"
     SPECIALIST = "specialist"
     CUSTOM = "custom"
+    
+    # Business-specific agent roles
+    BDR_CONCIERGE = "bdr_concierge"
+    SUPPORT_CONCIERGE = "support_concierge"
+    RESEARCH_RECON = "research_recon"
+    OPS_SAPPER = "ops_sapper"
+    KNOWLEDGE_LIBRARIAN = "knowledge_librarian"
+    QA_AUDITOR = "qa_auditor"
 
 
 class AgentStatus(str, Enum):

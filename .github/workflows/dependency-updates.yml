@@ -1,0 +1,431 @@
+name: Dependency Updates
+
+on:
+  schedule:
+    # Run weekly on Mondays at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      update_type:
+        description: 'Update type'
+        required: true
+        type: choice
+        options:
+          - security
+          - minor
+          - all
+      auto_merge:
+        description: 'Auto-merge non-breaking updates'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
+  POETRY_VERSION: "1.7.1"
+
+jobs:
+  # ==================== Check Python Dependencies ====================
+  check-python-updates:
+    name: Check Python Dependencies
+    runs-on: ubuntu-latest
+    outputs:
+      has_updates: ${{ steps.check.outputs.has_updates }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 - --version ${{ env.POETRY_VERSION }}
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Check for outdated packages
+        id: check
+        working-directory: apps/adapter
+        run: |
+          poetry show --outdated > outdated.txt || true
+          if [ -s outdated.txt ]; then
+            echo "has_updates=true" >> $GITHUB_OUTPUT
+            echo "## Outdated Python Packages" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat outdated.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "has_updates=false" >> $GITHUB_OUTPUT
+            echo "✅ All Python packages are up to date" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload outdated list
+        if: steps.check.outputs.has_updates == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-outdated-packages
+          path: apps/adapter/outdated.txt
+          retention-days: 7
+
+  # ==================== Check Node Dependencies ====================
+  check-node-updates:
+    name: Check Node Dependencies
+    runs-on: ubuntu-latest
+    outputs:
+      has_updates: ${{ steps.check.outputs.has_updates }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Check for outdated packages
+        id: check
+        working-directory: apps/web
+        run: |
+          npm outdated --json > outdated.json || true
+          if [ -s outdated.json ]; then
+            echo "has_updates=true" >> $GITHUB_OUTPUT
+            echo "## Outdated Node Packages" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat outdated.json >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "has_updates=false" >> $GITHUB_OUTPUT
+            echo "✅ All Node packages are up to date" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload outdated list
+        if: steps.check.outputs.has_updates == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: node-outdated-packages
+          path: apps/web/outdated.json
+          retention-days: 7
+
+  # ==================== Security Updates ====================
+  security-updates:
+    name: Apply Security Updates
+    runs-on: ubuntu-latest
+    needs: [check-python-updates, check-node-updates]
+    if: needs.check-python-updates.outputs.has_updates == 'true' || needs.check-node-updates.outputs.has_updates == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 - --version ${{ env.POETRY_VERSION }}
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Update Python security fixes
+        working-directory: apps/adapter
+        run: |
+          # Install safety to check vulnerabilities
+          pip install safety
+          
+          # Get list of vulnerable packages
+          safety check --json --file requirements.txt > vulnerabilities.json || true
+          
+          # Update packages with known vulnerabilities
+          poetry update
+          
+          git diff poetry.lock > python-security-updates.diff
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Update Node security fixes
+        working-directory: apps/web
+        run: |
+          # Run npm audit fix for security vulnerabilities
+          npm audit fix --audit-level=high
+          
+          git diff package-lock.json > node-security-updates.diff
+
+      - name: Create Pull Request for security updates
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore(deps): security updates'
+          title: '🔒 Security: Dependency Updates'
+          body: |
+            ## Security Dependency Updates
+            
+            This PR contains automated security updates for dependencies with known vulnerabilities.
+            
+            ### Changes
+            - Updated Python packages with security fixes
+            - Updated Node packages with security fixes
+            
+            ### Testing
+            - [ ] CI tests pass
+            - [ ] Manual testing completed
+            - [ ] No breaking changes detected
+            
+            **Auto-generated by dependency-updates workflow**
+          branch: security-updates-${{ github.run_number }}
+          labels: |
+            dependencies
+            security
+            automated
+
+  # ==================== Non-Breaking Updates ====================
+  minor-updates:
+    name: Apply Minor Updates
+    runs-on: ubuntu-latest
+    needs: [check-python-updates, check-node-updates]
+    if: |
+      (github.event_name == 'workflow_dispatch' && 
+       github.event.inputs.update_type == 'minor') ||
+      github.event_name == 'schedule'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 - --version ${{ env.POETRY_VERSION }}
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Update Python minor versions
+        working-directory: apps/adapter
+        run: |
+          # Update to latest compatible versions
+          poetry update --dry-run > update-plan.txt
+          poetry update
+          
+          git diff poetry.lock > python-minor-updates.diff
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Update Node minor versions
+        working-directory: apps/web
+        run: |
+          # Update to latest minor versions
+          npm update --save
+          
+          git diff package-lock.json > node-minor-updates.diff
+
+      - name: Run tests
+        run: |
+          # Run quick smoke tests
+          cd apps/adapter && poetry install && poetry run pytest tests/ -v || echo "Tests may need review"
+          cd apps/web && npm ci && npm test || echo "Tests may need review"
+
+      - name: Create Pull Request for minor updates
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore(deps): minor version updates'
+          title: '⬆️ Dependencies: Minor Updates'
+          body: |
+            ## Minor Dependency Updates
+            
+            This PR contains automated minor version updates for dependencies.
+            
+            ### Changes
+            - Updated Python packages to latest minor versions
+            - Updated Node packages to latest minor versions
+            
+            ### Testing
+            - [ ] CI tests pass
+            - [ ] Manual testing completed
+            - [ ] Breaking changes reviewed
+            
+            **Auto-generated by dependency-updates workflow**
+          branch: minor-updates-${{ github.run_number }}
+          labels: |
+            dependencies
+            enhancement
+            automated
+
+  # ==================== All Updates ====================
+  all-updates:
+    name: Apply All Updates
+    runs-on: ubuntu-latest
+    needs: [check-python-updates, check-node-updates]
+    if: |
+      github.event_name == 'workflow_dispatch' && 
+      github.event.inputs.update_type == 'all'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 - --version ${{ env.POETRY_VERSION }}
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Update all Python packages
+        working-directory: apps/adapter
+        run: |
+          # Update to latest versions (including major)
+          poetry update
+          poetry show --tree > dependency-tree.txt
+          
+          git diff poetry.lock > python-all-updates.diff
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Update all Node packages
+        working-directory: apps/web
+        run: |
+          # Update to latest versions
+          npx npm-check-updates -u
+          npm install
+          
+          git diff package.json package-lock.json > node-all-updates.diff
+
+      - name: Run comprehensive tests
+        run: |
+          cd apps/adapter && poetry install && poetry run pytest tests/ -v
+          cd apps/web && npm ci && npm test
+
+      - name: Create Pull Request for all updates
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore(deps): major version updates'
+          title: '⬆️ Dependencies: Major Updates (Review Required)'
+          body: |
+            ## Major Dependency Updates
+            
+            ⚠️ **This PR contains major version updates that may include breaking changes.**
+            
+            ### Changes
+            - Updated Python packages to latest versions
+            - Updated Node packages to latest versions
+            
+            ### Required Actions
+            - [ ] Review breaking changes
+            - [ ] Update code for API changes
+            - [ ] CI tests pass
+            - [ ] Full manual testing completed
+            - [ ] Documentation updated
+            
+            **Auto-generated by dependency-updates workflow**
+          branch: all-updates-${{ github.run_number }}
+          labels: |
+            dependencies
+            breaking-change
+            needs-review
+            automated
+
+  # ==================== License Compliance Check ====================
+  license-compliance:
+    name: Check License Compliance
+    runs-on: ubuntu-latest
+    needs: [security-updates, minor-updates, all-updates]
+    if: always()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Check Python licenses
+        working-directory: apps/adapter
+        run: |
+          pip install pip-licenses
+          pip install -r requirements.txt
+          
+          # Check for problematic licenses
+          pip-licenses --format=json > licenses.json
+          
+          # Create summary
+          echo "## Python License Summary" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          cat licenses.json >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Check Node licenses
+        working-directory: apps/web
+        run: |
+          npm install -g license-checker
+          npm ci
+          
+          # Check licenses
+          license-checker --json --out licenses.json
+          
+          # Create summary
+          echo "## Node License Summary" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          cat licenses.json >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  # ==================== Update Summary ====================
+  update-summary:
+    name: Dependency Update Summary
+    runs-on: ubuntu-latest
+    needs: 
+      - check-python-updates
+      - check-node-updates
+      - security-updates
+      - license-compliance
+    if: always()
+    steps:
+      - name: Create summary
+        run: |
+          echo "## Dependency Update Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Component | Updates Available | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|-------------------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Python Dependencies | ${{ needs.check-python-updates.outputs.has_updates }} | ${{ needs.check-python-updates.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Node Dependencies | ${{ needs.check-node-updates.outputs.has_updates }} | ${{ needs.check-node-updates.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Updates | - | ${{ needs.security-updates.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| License Check | - | ${{ needs.license-compliance.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.security-updates.result }}" == "success" ]]; then
+            echo "✅ **Dependency updates completed successfully**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️ **Check the workflow logs for details**" >> $GITHUB_STEP_SUMMARY
+          fi

@@ -1,33 +1,46 @@
+# Development Dockerfile for Next.js web application
+# Optimized for fast rebuilds with volume mounts
 FROM node:18-alpine
 
 WORKDIR /app
 
-# Install dependencies for node-gyp
-RUN apk add --no-cache python3 make g++
+# Install dependencies for node-gyp and native modules
+RUN apk add --no-cache python3 make g++ wget
 
-# Create non-root user
-RUN addgroup -g 1000 appuser && \
-    adduser -u 1000 -G appuser -D appuser && \
+# Create non-root user for security
+# Check if group exists, if not create it. node:alpine already has node user.
+RUN if ! getent group appuser; then \
+        addgroup -S appuser; \
+    fi && \
+    if ! getent passwd appuser; then \
+        adduser -S -G appuser appuser; \
+    fi && \
     chown -R appuser:appuser /app
 
-# Copy package files
+# Copy only package files for dependency installation
+# This layer is cached unless package.json changes
 COPY --chown=appuser:appuser package*.json ./
 
 # Switch to non-root user
 USER appuser
 
-# Install dependencies
+# Install dependencies using npm (not pnpm - not installed in container)
 RUN npm install
 
-# Copy application code (in dev, this will be mounted as volume)
+# Note: Application code is mounted as a volume in docker-compose.dev.yml
+# This allows for hot-reloading without rebuilding the container
+# The COPY below is for standalone use, but gets overridden by volume mount
+
+# Copy application code (overridden by volume mount in development)
 COPY --chown=appuser:appuser . .
 
-# Expose Next.js dev port
+# Expose Next.js development server port
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+# Health check - accounts for slow Next.js startup in development
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=5 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
 
-# Run in development mode
+# Run Next.js in development mode with hot reloading
+# Uses npm to match package manager in package.json
 CMD ["npm", "run", "dev"]

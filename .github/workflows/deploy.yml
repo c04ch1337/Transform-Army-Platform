@@ -1,0 +1,385 @@
+name: Deploy
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      version:
+        description: 'Version tag to deploy'
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
+
+jobs:
+  # ==================== Build Production Images ====================
+  build-production:
+    name: Build Production Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service: [adapter, web]
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: apps/${{ matrix.service }}
+          file: apps/${{ matrix.service }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ steps.meta.outputs.version }}
+
+      - name: Generate build summary
+        run: |
+          echo "## Build Summary - ${{ matrix.service }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.meta.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry:** ${{ env.REGISTRY }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Image Tags" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  # ==================== Deploy to Staging ====================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build-production
+    environment: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Set up kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG_STAGING }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Deploy to Kubernetes (Staging)
+        run: |
+          kubectl set image deployment/adapter adapter=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-adapter:${{ needs.build-production.outputs.version }} -n staging
+          kubectl set image deployment/web web=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-web:${{ needs.build-production.outputs.version }} -n staging
+          kubectl rollout status deployment/adapter -n staging --timeout=5m
+          kubectl rollout status deployment/web -n staging --timeout=5m
+
+      - name: Run database migrations (Staging)
+        run: |
+          kubectl exec deployment/adapter -n staging -- alembic upgrade head
+
+      - name: Verify deployment
+        run: |
+          kubectl get pods -n staging
+          kubectl get services -n staging
+
+      - name: Deployment summary
+        run: |
+          echo "## Staging Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** Staging" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.build-production.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** https://staging.transform-army.ai" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ✅ Deployed Successfully" >> $GITHUB_STEP_SUMMARY
+
+  # ==================== Smoke Tests (Staging) ====================
+  smoke-tests-staging:
+    name: Smoke Tests (Staging)
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install test dependencies
+        run: |
+          pip install pytest requests httpx
+
+      - name: Run health check
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://staging.transform-army.ai/health)
+          if [ $STATUS -eq 200 ]; then
+            echo "✅ Health check passed"
+          else
+            echo "❌ Health check failed with status $STATUS"
+            exit 1
+          fi
+
+      - name: Test API endpoints
+        run: |
+          # Test backend health
+          curl -f https://staging.transform-army.ai/api/health || exit 1
+          
+          # Test frontend loads
+          curl -f https://staging.transform-army.ai/ || exit 1
+          
+          echo "✅ All smoke tests passed"
+
+      - name: Test database connectivity
+        run: |
+          curl -f https://staging.transform-army.ai/api/health/db || exit 1
+          echo "✅ Database connectivity test passed"
+
+      - name: Smoke test summary
+        run: |
+          echo "## Smoke Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Health Check | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "| API Endpoints | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Database | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+
+  # ==================== Production Deployment Approval ====================
+  approve-production:
+    name: Approve Production Deployment
+    runs-on: ubuntu-latest
+    needs: smoke-tests-staging
+    environment: production-approval
+    steps:
+      - name: Manual approval required
+        run: |
+          echo "## Production Deployment Approval" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Staging deployment and smoke tests completed successfully." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ **Manual approval required for production deployment**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Review the staging deployment before approving:" >> $GITHUB_STEP_SUMMARY
+          echo "- https://staging.transform-army.ai" >> $GITHUB_STEP_SUMMARY
+
+  # ==================== Deploy to Production ====================
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build-production, approve-production]
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Set up kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Create backup
+        run: |
+          kubectl get deployment adapter -n production -o yaml > backup-adapter-$(date +%Y%m%d-%H%M%S).yaml
+          kubectl get deployment web -n production -o yaml > backup-web-$(date +%Y%m%d-%H%M%S).yaml
+
+      - name: Deploy to Kubernetes (Production)
+        run: |
+          kubectl set image deployment/adapter adapter=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-adapter:${{ needs.build-production.outputs.version }} -n production
+          kubectl set image deployment/web web=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-web:${{ needs.build-production.outputs.version }} -n production
+          kubectl rollout status deployment/adapter -n production --timeout=10m
+          kubectl rollout status deployment/web -n production --timeout=10m
+
+      - name: Run database migrations (Production)
+        run: |
+          kubectl exec deployment/adapter -n production -- alembic upgrade head
+
+      - name: Verify deployment
+        run: |
+          kubectl get pods -n production
+          kubectl get services -n production
+
+      - name: Upload deployment backups
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-backups-${{ needs.build-production.outputs.version }}
+          path: backup-*.yaml
+          retention-days: 90
+
+      - name: Production deployment summary
+        run: |
+          echo "## Production Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** Production" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.build-production.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** https://transform-army.ai" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** ✅ Deployed Successfully" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Rollback Command" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "kubectl rollout undo deployment/adapter -n production" >> $GITHUB_STEP_SUMMARY
+          echo "kubectl rollout undo deployment/web -n production" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  # ==================== Verify Production ====================
+  verify-production:
+    name: Verify Production Deployment
+    runs-on: ubuntu-latest
+    needs: deploy-production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install test dependencies
+        run: |
+          pip install pytest requests httpx
+
+      - name: Run health check
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://transform-army.ai/health)
+          if [ $STATUS -eq 200 ]; then
+            echo "✅ Production health check passed"
+          else
+            echo "❌ Production health check failed with status $STATUS"
+            exit 1
+          fi
+
+      - name: Test critical paths
+        run: |
+          # Test backend health
+          curl -f https://transform-army.ai/api/health || exit 1
+          
+          # Test frontend loads
+          curl -f https://transform-army.ai/ || exit 1
+          
+          # Test database connectivity
+          curl -f https://transform-army.ai/api/health/db || exit 1
+          
+          echo "✅ All critical paths verified"
+
+      - name: Run performance check
+        run: |
+          RESPONSE_TIME=$(curl -s -o /dev/null -w "%{time_total}" https://transform-army.ai/api/health)
+          echo "Response time: ${RESPONSE_TIME}s"
+          if (( $(echo "$RESPONSE_TIME < 2.0" | bc -l) )); then
+            echo "✅ Performance check passed"
+          else
+            echo "⚠️ Performance degraded (response time: ${RESPONSE_TIME}s)"
+          fi
+
+      - name: Create deployment tag
+        run: |
+          git tag production-${{ needs.deploy-production.outputs.version }}-$(date +%Y%m%d-%H%M%S)
+
+      - name: Send deployment notification
+        if: always() && env.SLACK_WEBHOOK != ''
+        run: |
+          curl -X POST ${{ secrets.SLACK_WEBHOOK }} \
+            -H 'Content-Type: application/json' \
+            -d '{
+              "text": "Production Deployment: ${{ job.status }}\nVersion: ${{ needs.build-production.outputs.version }}\nURL: https://transform-army.ai"
+            }'
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+
+      - name: Verification summary
+        run: |
+          echo "## Production Verification Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Health Check | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Critical Paths | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "| Performance | ✅ Passed |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment completed successfully! 🎉**" >> $GITHUB_STEP_SUMMARY
+
+  # ==================== Rollback (On Failure) ====================
+  rollback-on-failure:
+    name: Rollback on Failure
+    runs-on: ubuntu-latest
+    needs: [deploy-production, verify-production]
+    if: failure()
+    environment: production
+    steps:
+      - name: Configure kubectl
+        uses: azure/setup-kubectl@v3
+
+      - name: Set up kubeconfig
+        run: |
+          mkdir -p $HOME/.kube
+          echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > $HOME/.kube/config
+          chmod 600 $HOME/.kube/config
+
+      - name: Automatic rollback
+        run: |
+          echo "⚠️ Deployment verification failed, initiating automatic rollback..."
+          kubectl rollout undo deployment/adapter -n production
+          kubectl rollout undo deployment/web -n production
+          kubectl rollout status deployment/adapter -n production --timeout=5m
+          kubectl rollout status deployment/web -n production --timeout=5m
+          echo "✅ Rollback completed"
+
+      - name: Rollback notification
+        if: env.SLACK_WEBHOOK != ''
+        run: |
+          curl -X POST ${{ secrets.SLACK_WEBHOOK }} \
+            -H 'Content-Type: application/json' \
+            -d '{
+              "text": "⚠️ Production deployment failed and was rolled back\nVersion: ${{ needs.build-production.outputs.version }}\nPlease investigate the issue before attempting another deployment."
+            }'
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}

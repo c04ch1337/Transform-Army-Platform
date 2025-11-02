@@ -1,0 +1,195 @@
+{
+  "name": "Support Concierge (DELTA-1)",
+  "transcriber": {
+    "provider": "deepgram",
+    "model": "nova-2",
+    "language": "en"
+  },
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4",
+    "temperature": 0.2,
+    "maxTokens": 750,
+    "systemPrompt": "You are Support Concierge, call sign DELTA-1, a Customer Support AI agent with the rank of Sergeant in Transform Army AI. Your MOS is 88M (Transportation Specialist - Support Operations).\n\nMISSION: Triage incoming support tickets, provide solutions through knowledge base searches, and escalate complex issues with comprehensive context. You are the first responder for customer problems.\n\nCORE RESPONSIBILITIES:\n1. Ticket Triage: Classify priority (P1-P4) and category accurately\n2. Solution Delivery: Search knowledge base and provide step-by-step guidance\n3. Issue Documentation: Create detailed ticket records with all context\n4. Escalation Management: Route complex issues to appropriate teams with full briefing\n5. Customer Care: Provide empathetic, professional support experience\n\nYOUR PERSONALITY:\n- Calm and reassuring under pressure\n- Empathetic listener focused on understanding customer pain\n- Patient and thorough in explanations\n- Problem-solver with systematic troubleshooting approach\n- Supportive military medic demeanor (care and competence)\n\nPRIORITY CLASSIFICATION:\nP1 - Critical (SLA: 15 minutes):\n- Production system down\n- Data loss or corruption\n- Security breach or vulnerability\n- Complete loss of functionality\n- Business-critical workflow blocked\n\nP2 - High (SLA: 2 hours):\n- Major feature not working\n- Multiple users affected\n- Significant performance degradation\n- Workaround exists but difficult\n- Revenue-impacting issue\n\nP3 - Medium (SLA: 8 hours):\n- Minor bug or issue\n- Single user affected\n- Feature working but not as expected\n- Easy workaround available\n- UI/UX concerns\n\nP4 - Low (SLA: 24 hours):\n- General questions\n- Feature requests\n- Documentation feedback\n- Enhancement suggestions\n- Training requests\n\nSOLUTION CONFIDENCE THRESHOLDS:\n- Confidence ≥0.85: Provide solution directly with confidence\n- Confidence 0.70-0.84: Provide solution with verification prompt\n- Confidence 0.50-0.69: Offer solution as possible, suggest alternatives\n- Confidence <0.50: Escalate with attempted solutions documented\n\nAVAILABLE TOOLS:\n- create_ticket: Create detailed support ticket with classification\n- search_kb: Search knowledge base for solutions (semantic search)\n- escalate_to_human: Route to human agent with full context\n- get_ticket_status: Check status of existing tickets\n\nTROUBLESHOOTING APPROACH:\n1. Understand the problem (what's broken, expected vs actual)\n2. Gather context (when started, what changed, affected users)\n3. Search knowledge base for known solutions\n4. Provide step-by-step resolution with expected results\n5. Verify solution worked\n6. Document resolution in ticket\n7. Offer related resources to prevent recurrence\n\nESCALATION CRITERIA:\n- No KB article match with confidence >0.50\n- Customer explicitly requests human agent\n- Issue requires backend access or code changes\n- Security or compliance concerns\n- VIP customer (Enterprise tier)\n- SLA at risk of breach\n- Customer frustrated or escalating tone\n\nESCALATION HANDOFF:\n- Priority and SLA deadline\n- Complete problem description\n- Troubleshooting steps already attempted\n- Customer information and history\n- Relevant KB articles reviewed\n- Recommended next actions\n- Special customer notes (VIP, history, etc.)\n\nCOMMUNICATION STYLE:\n- Acknowledge the problem and customer frustration\n- Use clear, jargon-free language\n- Provide specific steps, not general advice\n- Set realistic expectations on timing\n- Follow up to confirm resolution\n- Professional empathy throughout\n\nRESPONSE STRUCTURE:\n1. Acknowledgment: \"I understand you're experiencing [issue]\"\n2. Clarification: Ask any needed questions\n3. Solution: Step-by-step instructions\n4. Verification: \"You should now see [expected result]\"\n5. Next Steps: Additional help or follow-up\n6. Resources: Links to relevant documentation\n\nREMEMBER: You are the customer's advocate in Transform Army AI support operations. Your mission is rapid problem resolution through systematic troubleshooting and empathetic service. Every customer interaction is an opportunity to build trust and demonstrate care."
+  },
+  "voice": {
+    "provider": "11labs",
+    "voiceId": "REPLACE_WITH_ELEVENLABS_VOICE_ID_CALM_HELPFUL",
+    "stability": 0.8,
+    "similarityBoost": 0.75,
+    "style": 0.2,
+    "useSpeakerBoost": true
+  },
+  "firstMessage": "Hello, this is Support Concierge, call sign Delta-One, from Transform Army AI. I'm here to help resolve your issue. Can you tell me what problem you're experiencing?",
+  "endCallMessage": "Thank you for contacting support. You'll receive a ticket confirmation email with case number and resolution steps. If you need further assistance, just reference your ticket number. We're here to help!",
+  "endCallPhrases": [
+    "goodbye",
+    "that's all",
+    "thank you",
+    "end call",
+    "problem solved"
+  ],
+  "voicemailMessage": "Hi, this is Support Concierge from Transform Army AI customer support. I help troubleshoot issues and create support tickets. Please leave a message with your contact information and a brief description of your issue, or email support for faster assistance.",
+  "serverUrl": "https://YOUR_WEBHOOK_URL_HERE/api/v1/vapi/webhook",
+  "serverUrlSecret": "YOUR_WEBHOOK_SECRET_HERE",
+  "functions": [
+    {
+      "name": "create_ticket",
+      "description": "Create a new support ticket with complete problem description and classification",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "customer_email": {
+            "type": "string",
+            "description": "Customer email address"
+          },
+          "customer_name": {
+            "type": "string",
+            "description": "Customer name"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Brief subject line describing the issue"
+          },
+          "description": {
+            "type": "string",
+            "description": "Detailed description of the problem"
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["P1", "P2", "P3", "P4"],
+            "description": "Priority classification based on severity"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["bug", "feature_request", "question", "account", "performance", "security", "other"],
+            "description": "Issue category"
+          },
+          "affected_feature": {
+            "type": "string",
+            "description": "Specific feature or area affected"
+          },
+          "error_messages": {
+            "type": "string",
+            "description": "Any error messages displayed"
+          },
+          "steps_to_reproduce": {
+            "type": "string",
+            "description": "Steps to recreate the issue"
+          },
+          "impact": {
+            "type": "string",
+            "description": "Business impact and number of users affected"
+          },
+          "attempted_solutions": {
+            "type": "string",
+            "description": "Troubleshooting steps already tried"
+          }
+        },
+        "required": ["customer_email", "subject", "description", "priority"]
+      }
+    },
+    {
+      "name": "search_kb",
+      "description": "Search knowledge base for solutions using semantic search",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query describing the problem"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["all", "troubleshooting", "how_to", "faq", "api", "integration"],
+            "description": "KB category to search in",
+            "default": "all"
+          },
+          "max_results": {
+            "type": "number",
+            "description": "Maximum number of results to return",
+            "default": 3
+          },
+          "min_confidence": {
+            "type": "number",
+            "description": "Minimum confidence score (0-1)",
+            "default": 0.5
+          }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "escalate_to_human",
+      "description": "Escalate issue to human support agent with complete context",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "description": "Existing ticket ID if already created"
+          },
+          "escalation_reason": {
+            "type": "string",
+            "enum": ["no_solution_found", "customer_request", "technical_complexity", "security_concern", "vip_customer", "sla_risk"],
+            "description": "Reason for escalation"
+          },
+          "urgency": {
+            "type": "string",
+            "enum": ["critical", "high", "normal"],
+            "description": "Escalation urgency level",
+            "default": "normal"
+          },
+          "attempted_solutions": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Solutions already attempted"
+          },
+          "kb_articles_reviewed": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "KB article IDs reviewed"
+          },
+          "recommended_actions": {
+            "type": "string",
+            "description": "Recommended next steps for human agent"
+          },
+          "special_notes": {
+            "type": "string",
+            "description": "Any special circumstances or customer notes"
+          }
+        },
+        "required": ["escalation_reason"]
+      }
+    },
+    {
+      "name": "get_ticket_status",
+      "description": "Check status and details of existing support ticket",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticket_id": {
+            "type": "string",
+            "description": "Ticket ID or case number"
+          },
+          "customer_email": {
+            "type": "string",
+            "description": "Customer email (alternative to ticket ID)"
+          },
+          "include_history": {
+            "type": "boolean",
+            "description": "Include full conversation history",
+            "default": false
+          }
+        },
+        "required": []
+      }
+    }
+  ],
+  "recordingEnabled": true,
+  "silenceTimeoutSeconds": 30,
+  "maxDurationSeconds": 900,
+  "backgroundSound": "off",
+  "backchannelingEnabled": true,
+  "endCallFunctionEnabled": false
+}

@@ -1,0 +1,204 @@
+{
+  "name": "BDR Concierge (ALPHA-3)",
+  "transcriber": {
+    "provider": "deepgram",
+    "model": "nova-2",
+    "language": "en"
+  },
+  "model": {
+    "provider": "openai",
+    "model": "gpt-4",
+    "temperature": 0.3,
+    "maxTokens": 700,
+    "systemPrompt": "You are BDR Concierge, call sign ALPHA-3, a Sales Development AI agent with the rank of Staff Sergeant in Transform Army AI. Your MOS is 42A (Human Resources Specialist - Sales Development).\n\nMISSION: Qualify inbound leads through voice interactions, assess buying potential using BANT framework, and coordinate discovery calls with qualified prospects. You serve as the first point of contact for potential customers.\n\nCORE RESPONSIBILITIES:\n1. Lead Qualification: Apply BANT framework (Budget, Authority, Need, Timeline)\n2. CRM Management: Check for duplicates, enrich contact data, maintain records\n3. Meeting Coordination: Book demos for qualified leads (score ≥70)\n4. Follow-up Management: Send confirmations, reminders, and nurture sequences\n5. Sales Intelligence: Capture use cases, pain points, competitive context\n\nYOUR PERSONALITY:\n- Professional and friendly with consultative approach\n- Enthusiastic about helping solve business problems\n- Active listener focused on understanding needs\n- Confident but not pushy in sales conversations\n- Military professionalism with warm sales demeanor\n\nQUALIFICATION SCORING (0-100 points):\nBudget (0-30):\n- 25-30: Explicit budget mentioned, $50K+ annually\n- 15-24: Budget range indicated, appropriate size\n- 5-14: Budget authority unclear\n- 0-4: No budget or inappropriate size\n\nAuthority (0-25):\n- 20-25: C-level (CEO, CTO, CFO, CMO)\n- 15-19: VP or Director level\n- 10-14: Manager with buying input\n- 0-9: Individual contributor or unclear\n\nNeed (0-30):\n- 25-30: Clear pain point, strong product fit\n- 15-24: General interest, potential fit\n- 5-14: Exploratory, weak fit\n- 0-4: No clear need or poor fit\n\nTimeline (0-15):\n- 12-15: Within 30 days, urgent\n- 6-11: Within 90 days, active project\n- 3-5: Future consideration\n- 0-2: No timeline or long-term\n\nQUALIFICATION THRESHOLDS:\n- Score ≥70: QUALIFIED - Book discovery call (30 min) or demo (60 min)\n- Score 50-69: NURTURE - Add to drip campaign, follow up in 30 days\n- Score <50: DISQUALIFY - Send resources, note for future reference\n\nAVAILABLE TOOLS:\n- qualify_lead: Score prospect using BANT framework\n- check_crm: Search for existing contacts and account history\n- schedule_demo: Book discovery call or product demo\n- send_follow_up: Send confirmation emails and follow-up sequences\n\nESCALATION PROTOCOL:\n- Deal size >$50K OR company size >1000 → Sales manager\n- Active competitive evaluation → Sales manager immediate\n- Technical questions beyond scope → Solutions engineer\n- Enterprise/regulated industries → Note compliance requirements\n- C-level contact → Expedite and notify leadership\n\nMEETING TYPES:\n- Discovery Call: 30 minutes, general exploration\n- Product Demo: 60 minutes, specific use case demonstration\n- Technical Deep-Dive: 90 minutes (scheduled by sales engineer)\n\nCOMMUNICATION STYLE:\n- Warm and professional\n- Ask open-ended questions to uncover needs\n- Listen actively, acknowledge concerns\n- Provide value in every interaction\n- Clear next steps and expectations\n- Follow military protocol with friendly execution\n\nREMEMBER: You are the gateway to Transform Army AI sales. Your mission is identifying qualified opportunities through consultative conversations. Build rapport, understand needs, and guide prospects to the right next step. Every interaction should add value."
+  },
+  "voice": {
+    "provider": "11labs",
+    "voiceId": "REPLACE_WITH_ELEVENLABS_VOICE_ID_FRIENDLY_PROFESSIONAL",
+    "stability": 0.75,
+    "similarityBoost": 0.8,
+    "style": 0.3,
+    "useSpeakerBoost": true
+  },
+  "firstMessage": "Hello! This is the BDR Concierge, call sign Alpha-Three, from Transform Army AI sales development. I'm here to learn about your needs and see how we can help. How are you doing today?",
+  "endCallMessage": "Thank you for your time today. You'll receive a confirmation email shortly with next steps and any resources discussed. Looking forward to working with you!",
+  "endCallPhrases": [
+    "goodbye",
+    "that's all",
+    "thank you",
+    "end call",
+    "talk later"
+  ],
+  "voicemailMessage": "Hi, this is the BDR Concierge from Transform Army AI. I help qualify prospects and coordinate product demos. Please call back or email us to schedule a discovery call. Talk soon!",
+  "serverUrl": "https://YOUR_WEBHOOK_URL_HERE/api/v1/vapi/webhook",
+  "serverUrlSecret": "YOUR_WEBHOOK_SECRET_HERE",
+  "functions": [
+    {
+      "name": "qualify_lead",
+      "description": "Assess lead qualification using BANT framework and calculate qualification score",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "contact_name": {
+            "type": "string",
+            "description": "Full name of the contact"
+          },
+          "contact_email": {
+            "type": "string",
+            "description": "Email address of the contact"
+          },
+          "contact_phone": {
+            "type": "string",
+            "description": "Phone number of the contact"
+          },
+          "company_name": {
+            "type": "string",
+            "description": "Name of the company"
+          },
+          "job_title": {
+            "type": "string",
+            "description": "Job title/role of the contact"
+          },
+          "company_size": {
+            "type": "string",
+            "enum": ["1-50", "51-200", "201-1000", "1001-5000", "5000+"],
+            "description": "Approximate company size"
+          },
+          "budget_info": {
+            "type": "string",
+            "description": "Budget information shared by prospect"
+          },
+          "pain_points": {
+            "type": "string",
+            "description": "Specific problems or challenges mentioned"
+          },
+          "timeline": {
+            "type": "string",
+            "description": "When they need solution implemented"
+          },
+          "current_solution": {
+            "type": "string",
+            "description": "Current tools or vendors they use"
+          },
+          "decision_process": {
+            "type": "string",
+            "description": "Who else is involved in decision making"
+          }
+        },
+        "required": ["contact_name", "contact_email", "company_name"]
+      }
+    },
+    {
+      "name": "check_crm",
+      "description": "Search CRM for existing contacts, accounts, and interaction history",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "search_type": {
+            "type": "string",
+            "enum": ["email", "company", "phone"],
+            "description": "Type of search to perform",
+            "default": "email"
+          },
+          "search_value": {
+            "type": "string",
+            "description": "Value to search for (email address, company name, or phone)"
+          },
+          "include_history": {
+            "type": "boolean",
+            "description": "Include past interaction history",
+            "default": true
+          }
+        },
+        "required": ["search_value"]
+      }
+    },
+    {
+      "name": "schedule_demo",
+      "description": "Book a discovery call or product demo with qualified prospect",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "contact_email": {
+            "type": "string",
+            "description": "Contact email address for calendar invite"
+          },
+          "meeting_type": {
+            "type": "string",
+            "enum": ["discovery", "demo", "technical"],
+            "description": "Type of meeting to schedule",
+            "default": "discovery"
+          },
+          "duration_minutes": {
+            "type": "number",
+            "enum": [30, 60, 90],
+            "description": "Meeting duration in minutes",
+            "default": 30
+          },
+          "preferred_date": {
+            "type": "string",
+            "description": "Preferred date (YYYY-MM-DD format)"
+          },
+          "preferred_time": {
+            "type": "string",
+            "description": "Preferred time (HH:MM format, 24-hour)"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "Timezone (e.g., America/New_York)",
+            "default": "America/Chicago"
+          },
+          "special_notes": {
+            "type": "string",
+            "description": "Any special requirements or topics to cover"
+          }
+        },
+        "required": ["contact_email", "meeting_type"]
+      }
+    },
+    {
+      "name": "send_follow_up",
+      "description": "Send follow-up email with confirmation, resources, or next steps",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "contact_email": {
+            "type": "string",
+            "description": "Recipient email address"
+          },
+          "follow_up_type": {
+            "type": "string",
+            "enum": ["meeting_confirmation", "resources", "nurture", "thank_you"],
+            "description": "Type of follow-up to send"
+          },
+          "meeting_details": {
+            "type": "object",
+            "description": "Meeting details if confirming a scheduled call",
+            "properties": {
+              "date": {"type": "string"},
+              "time": {"type": "string"},
+              "duration": {"type": "number"},
+              "meeting_link": {"type": "string"}
+            }
+          },
+          "resources": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "List of resource links to include"
+          },
+          "personal_note": {
+            "type": "string",
+            "description": "Personalized message to include"
+          }
+        },
+        "required": ["contact_email", "follow_up_type"]
+      }
+    }
+  ],
+  "recordingEnabled": true,
+  "silenceTimeoutSeconds": 30,
+  "maxDurationSeconds": 1200,
+  "backgroundSound": "off",
+  "backchannelingEnabled": true,
+  "endCallFunctionEnabled": false
+}

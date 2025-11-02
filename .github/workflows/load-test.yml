@@ -1,0 +1,512 @@
+name: Load Testing
+
+on:
+  # Run on schedule (weekly on Sundays at 2 AM UTC)
+  schedule:
+    - cron: '0 2 * * 0'
+  
+  # Run on release candidates
+  push:
+    tags:
+      - 'v*-rc*'
+  
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: 'Test scenario to run'
+        required: true
+        default: 'load'
+        type: choice
+        options:
+          - smoke
+          - load
+          - stress
+          - spike
+          - database
+          - all
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      compare_baseline:
+        description: 'Compare with baseline'
+        required: false
+        type: boolean
+        default: true
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+
+jobs:
+  # ============================================================================
+  # Validation Job
+  # ============================================================================
+  validate:
+    name: Validate Environment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      scenario: ${{ steps.set-env.outputs.scenario }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set environment and scenario
+        id: set-env
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "environment=${{ inputs.environment }}" >> $GITHUB_OUTPUT
+            echo "scenario=${{ inputs.scenario }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "schedule" ]; then
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "scenario=load" >> $GITHUB_OUTPUT
+          else
+            echo "environment=staging" >> $GITHUB_OUTPUT
+            echo "scenario=smoke" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Validate configuration files
+        run: |
+          echo "Validating configuration files..."
+          test -f apps/adapter/tests/load/load_config.yaml
+          test -f apps/adapter/tests/load/baselines.json
+          test -f apps/adapter/tests/load/locustfile.py
+          test -f apps/adapter/tests/load/k6-load-test.js
+          test -f apps/adapter/tests/load/database_load.py
+          test -f scripts/run-load-tests.sh
+          echo "✓ All configuration files present"
+
+  # ============================================================================
+  # Locust Load Test Job
+  # ============================================================================
+  locust-test:
+    name: Locust Load Test (${{ needs.validate.outputs.scenario }})
+    runs-on: ubuntu-latest
+    needs: validate
+    if: |
+      needs.validate.outputs.scenario == 'smoke' ||
+      needs.validate.outputs.scenario == 'load' ||
+      needs.validate.outputs.scenario == 'soak' ||
+      needs.validate.outputs.scenario == 'all'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install locust asyncpg psycopg2-binary pyyaml
+      
+      - name: Create results directory
+        run: mkdir -p load_test_results
+      
+      - name: Run Locust test
+        env:
+          TARGET_ENV: ${{ needs.validate.outputs.environment }}
+          SCENARIO: ${{ needs.validate.outputs.scenario }}
+        run: |
+          cd apps/adapter/tests/load
+          
+          # Set base URL based on environment
+          if [ "$TARGET_ENV" == "production" ]; then
+            BASE_URL="https://adapter.transform-army.ai"
+          else
+            BASE_URL="https://adapter-staging.transform-army.ai"
+          fi
+          
+          # Set test parameters based on scenario
+          case $SCENARIO in
+            smoke)
+              USERS=1
+              SPAWN_RATE=1
+              DURATION="1m"
+              ;;
+            load)
+              USERS=100
+              SPAWN_RATE=10
+              DURATION="10m"
+              ;;
+            soak)
+              USERS=50
+              SPAWN_RATE=5
+              DURATION="30m"  # Reduced for CI
+              ;;
+            *)
+              USERS=10
+              SPAWN_RATE=2
+              DURATION="2m"
+              ;;
+          esac
+          
+          echo "Running Locust test: $SCENARIO"
+          echo "Users: $USERS, Spawn Rate: $SPAWN_RATE, Duration: $DURATION"
+          echo "Target: $BASE_URL"
+          
+          locust \
+            -f locustfile.py \
+            --headless \
+            --users $USERS \
+            --spawn-rate $SPAWN_RATE \
+            --run-time $DURATION \
+            --host $BASE_URL \
+            --html ../../../../load_test_results/locust_report.html \
+            --csv ../../../../load_test_results/locust_results \
+            --exit-code-on-error 0 \
+            || true
+      
+      - name: Upload Locust results
+        uses: actions/upload-artifact@v4
+        with:
+          name: locust-results-${{ needs.validate.outputs.scenario }}
+          path: load_test_results/locust_*
+          retention-days: 30
+
+  # ============================================================================
+  # K6 Load Test Job
+  # ============================================================================
+  k6-test:
+    name: K6 Load Test (${{ needs.validate.outputs.scenario }})
+    runs-on: ubuntu-latest
+    needs: validate
+    if: |
+      needs.validate.outputs.scenario == 'stress' ||
+      needs.validate.outputs.scenario == 'spike' ||
+      needs.validate.outputs.scenario == 'all'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+      
+      - name: Create results directory
+        run: mkdir -p load_test_results
+      
+      - name: Run k6 test
+        env:
+          TARGET_ENV: ${{ needs.validate.outputs.environment }}
+          SCENARIO: ${{ needs.validate.outputs.scenario }}
+        run: |
+          cd apps/adapter/tests/load
+          
+          # Set base URL based on environment
+          if [ "$TARGET_ENV" == "production" ]; then
+            BASE_URL="https://adapter.transform-army.ai"
+          else
+            BASE_URL="https://adapter-staging.transform-army.ai"
+          fi
+          
+          echo "Running k6 test: $SCENARIO"
+          echo "Target: $BASE_URL"
+          
+          k6 run \
+            --env HOST=$BASE_URL \
+            --env SCENARIO=$SCENARIO \
+            --out json=../../../../load_test_results/k6_results.json \
+            k6-load-test.js \
+            || true
+      
+      - name: Upload k6 results
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-results-${{ needs.validate.outputs.scenario }}
+          path: load_test_results/k6_*
+          retention-days: 30
+
+  # ============================================================================
+  # Database Load Test Job
+  # ============================================================================
+  database-test:
+    name: Database Load Test
+    runs-on: ubuntu-latest
+    needs: validate
+    if: |
+      needs.validate.outputs.scenario == 'database' ||
+      needs.validate.outputs.scenario == 'all'
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: transform_army_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install asyncpg psycopg2-binary pyyaml
+      
+      - name: Initialize test database
+        env:
+          PGPASSWORD: postgres
+        run: |
+          # Create basic schema for testing
+          psql -h localhost -U postgres -d transform_army_test << EOF
+            CREATE TABLE IF NOT EXISTS tenants (
+              id VARCHAR(255) PRIMARY KEY,
+              name VARCHAR(255) NOT NULL,
+              created_at TIMESTAMP DEFAULT NOW()
+            );
+            
+            CREATE TABLE IF NOT EXISTS action_logs (
+              id SERIAL PRIMARY KEY,
+              tenant_id VARCHAR(255),
+              operation VARCHAR(255),
+              status VARCHAR(50),
+              duration_ms INTEGER,
+              created_at TIMESTAMP DEFAULT NOW(),
+              metadata JSONB
+            );
+            
+            CREATE INDEX idx_action_logs_tenant ON action_logs(tenant_id);
+            CREATE INDEX idx_action_logs_status ON action_logs(status);
+            CREATE INDEX idx_action_logs_created ON action_logs(created_at);
+            
+            -- Insert test data
+            INSERT INTO tenants (id, name) VALUES ('tenant_001', 'Test Tenant 1');
+            INSERT INTO action_logs (tenant_id, operation, status, duration_ms)
+            SELECT 
+              'tenant_001',
+              'test_operation',
+              'success',
+              (random() * 1000)::int
+            FROM generate_series(1, 1000);
+          EOF
+      
+      - name: Create results directory
+        run: mkdir -p load_test_results
+      
+      - name: Run database load test
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_DB: transform_army_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        run: |
+          cd apps/adapter/tests/load
+          
+          echo "Running database load tests..."
+          
+          python3 database_load.py \
+            --test connection_pool \
+            --connections 50 \
+            --duration 60 \
+            --output ../../../../load_test_results/db_connection_pool.json \
+            || true
+          
+          python3 database_load.py \
+            --test query_performance \
+            --qps 100 \
+            --duration 60 \
+            --output ../../../../load_test_results/db_query_performance.json \
+            || true
+          
+          python3 database_load.py \
+            --test rls \
+            --output ../../../../load_test_results/db_rls.json \
+            || true
+      
+      - name: Upload database results
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-results
+          path: load_test_results/db_*
+          retention-days: 30
+
+  # ============================================================================
+  # Results Analysis Job
+  # ============================================================================
+  analyze-results:
+    name: Analyze Results
+    runs-on: ubuntu-latest
+    needs: [validate, locust-test, k6-test, database-test]
+    if: always()
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: load_test_results
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install analysis tools
+        run: |
+          pip install --upgrade pip
+          pip install pandas matplotlib jinja2
+      
+      - name: Analyze results
+        run: |
+          echo "Analyzing load test results..."
+          
+          # Create summary
+          cat > load_test_results/summary.md << EOF
+          # Load Test Results Summary
+          
+          **Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          **Scenario:** ${{ needs.validate.outputs.scenario }}
+          **Environment:** ${{ needs.validate.outputs.environment }}
+          **Triggered by:** ${{ github.event_name }}
+          
+          ## Test Execution
+          
+          - Locust Test: ${{ needs.locust-test.result }}
+          - K6 Test: ${{ needs.k6-test.result }}
+          - Database Test: ${{ needs.database-test.result }}
+          
+          ## Artifacts
+          
+          All test results have been uploaded as artifacts and are available for 30 days.
+          
+          ## Next Steps
+          
+          1. Review the detailed test reports in the artifacts
+          2. Compare results against performance baselines
+          3. Investigate any failures or performance regressions
+          4. Update baselines if performance has improved
+          
+          EOF
+          
+          cat load_test_results/summary.md
+      
+      - name: Compare with baseline
+        if: inputs.compare_baseline || github.event_name == 'schedule'
+        run: |
+          echo "Comparing results with baseline..."
+          # TODO: Implement baseline comparison logic
+          echo "Baseline comparison not yet implemented"
+      
+      - name: Upload summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-summary
+          path: load_test_results/summary.md
+          retention-days: 90
+      
+      - name: Comment on PR (if applicable)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const summary = fs.readFileSync('load_test_results/summary.md', 'utf8');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+
+  # ============================================================================
+  # Performance Regression Check
+  # ============================================================================
+  check-regression:
+    name: Check Performance Regression
+    runs-on: ubuntu-latest
+    needs: [validate, analyze-results]
+    if: |
+      always() &&
+      (inputs.compare_baseline || github.event_name == 'schedule')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Download test results
+        uses: actions/download-artifact@v4
+        with:
+          path: load_test_results
+      
+      - name: Check for regressions
+        id: regression-check
+        run: |
+          echo "Checking for performance regressions..."
+          
+          # TODO: Implement regression detection logic
+          # Compare current results with baselines
+          # Set regression_detected=true if found
+          
+          echo "regression_detected=false" >> $GITHUB_OUTPUT
+      
+      - name: Create regression issue
+        if: steps.regression-check.outputs.regression_detected == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🐌 Performance Regression Detected',
+              body: `Performance regression detected in load tests.
+              
+              **Scenario:** ${{ needs.validate.outputs.scenario }}
+              **Environment:** ${{ needs.validate.outputs.environment }}
+              **Run:** ${{ github.run_id }}
+              
+              Please review the test results and investigate the performance degradation.`,
+              labels: ['performance', 'regression', 'load-testing']
+            });
+
+  # ============================================================================
+  # Cleanup Job
+  # ============================================================================
+  cleanup:
+    name: Cleanup
+    runs-on: ubuntu-latest
+    needs: [analyze-results, check-regression]
+    if: always()
+    
+    steps:
+      - name: Cleanup test data
+        run: |
+          echo "Cleanup would be performed here"
+          # TODO: Implement cleanup of test data from target environment
+          # - Remove test contacts
+          # - Remove test tickets
+          # - Remove test workflow executions

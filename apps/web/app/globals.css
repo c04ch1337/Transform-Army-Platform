@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Tactical Light Theme (for daytime ops) */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    
+    /* Military green as primary */
+    --primary: 152 25% 38%;  /* #4A7C59 tactical green */
+    --primary-foreground: 0 0% 100%;
+    
+    /* Tactical gold as secondary */
+    --secondary: 45 100% 50%;  /* #FFB800 ops gold */
+    --secondary-foreground: 222.2 84% 4.9%;
+    
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    
+    /* Alert red for destructive */
+    --destructive: 0 100% 50%;  /* #FF0000 tactical red */
+    --destructive-foreground: 0 0% 100%;
+    
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    
+    /* Cyber blue for ring/focus */
+    --ring: 189 100% 50%;  /* #00D9FF cyber blue */
+    
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    /* Tactical Night Theme (default for command center) */
+    --background: 220 20% 6%;  /* #0A0E12 tactical black */
+    --foreground: 0 0% 95%;
+    
+    /* Darker cards for depth */
+    --card: 220 20% 10%;  /* #1A1F2E */
+    --card-foreground: 0 0% 95%;
+    
+    --popover: 220 20% 10%;
+    --popover-foreground: 0 0% 95%;
+    
+    /* Tactical green primary */
+    --primary: 152 25% 38%;  /* #4A7C59 */
+    --primary-foreground: 0 0% 100%;
+    
+    /* Ops gold secondary */
+    --secondary: 45 100% 50%;  /* #FFB800 */
+    --secondary-foreground: 220 20% 6%;
+    
+    /* Muted tactical tones */
+    --muted: 220 20% 15%;
+    --muted-foreground: 0 0% 60%;
+    
+    /* Accent with tactical green */
+    --accent: 152 25% 25%;
+    --accent-foreground: 0 0% 95%;
+    
+    /* Alert red */
+    --destructive: 0 100% 50%;
+    --destructive-foreground: 0 0% 100%;
+    
+    /* Borders in tactical green */
+    --border: 152 25% 20%;
+    --input: 152 25% 20%;
+    
+    /* Cyber blue focus */
+    --ring: 189 100% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  
+  /* Military time display */
+  .military-time {
+    @apply font-mono text-sm tabular-nums;
+  }
+  
+  /* Tactical headings */
+  h1, h2, h3 {
+    @apply font-tactical;
+  }
+  
+  /* Data/code elements use mono */
+  code, pre, .data-display {
+    @apply font-mono;
+  }
+}

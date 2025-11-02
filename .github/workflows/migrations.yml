@@ -1,0 +1,408 @@
+name: Database Migrations
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'apps/adapter/alembic/versions/**'
+      - 'apps/adapter/alembic/env.py'
+      - 'apps/adapter/src/models/**'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'apps/adapter/alembic/versions/**'
+      - 'apps/adapter/alembic/env.py'
+      - 'apps/adapter/src/models/**'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Migration action'
+        required: true
+        type: choice
+        options:
+          - check
+          - upgrade
+          - downgrade
+          - generate
+      target:
+        description: 'Target revision (for upgrade/downgrade)'
+        required: false
+        type: string
+        default: 'head'
+
+env:
+  PYTHON_VERSION: "3.11"
+  POETRY_VERSION: "1.7.1"
+
+jobs:
+  # ==================== Check Migration Conflicts ====================
+  check-conflicts:
+    name: Check Migration Conflicts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pypoetry
+            apps/adapter/.venv
+          key: ${{ runner.os }}-poetry-${{ hashFiles('apps/adapter/poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-poetry-
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 - --version ${{ env.POETRY_VERSION }}
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        working-directory: apps/adapter
+        run: |
+          poetry config virtualenvs.in-project true
+          poetry install --no-interaction
+
+      - name: Check for migration conflicts
+        working-directory: apps/adapter
+        run: |
+          poetry run alembic branches
+          BRANCHES=$(poetry run alembic branches | wc -l)
+          if [ $BRANCHES -gt 0 ]; then
+            echo "❌ Migration branches detected - possible conflict!"
+            poetry run alembic branches
+            exit 1
+          else
+            echo "✅ No migration conflicts detected"
+          fi
+
+      - name: Check migration heads
+        working-directory: apps/adapter
+        run: |
+          poetry run alembic heads
+          HEADS=$(poetry run alembic heads | wc -l)
+          if [ $HEADS -gt 1 ]; then
+            echo "❌ Multiple migration heads detected!"
+            poetry run alembic heads
+            exit 1
+          else
+            echo "✅ Single migration head confirmed"
+          fi
+
+  # ==================== Validate Schema Consistency ====================
+  validate-schema:
+    name: Validate Schema Consistency
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: transform_army_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pypoetry
+            apps/adapter/.venv
+          key: ${{ runner.os }}-poetry-${{ hashFiles('apps/adapter/poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-poetry-
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 - --version ${{ env.POETRY_VERSION }}
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        working-directory: apps/adapter
+        run: |
+          poetry config virtualenvs.in-project true
+          poetry install --no-interaction
+
+      - name: Run migrations
+        working-directory: apps/adapter
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/transform_army_test
+        run: |
+          poetry run alembic upgrade head
+
+      - name: Check migration status
+        working-directory: apps/adapter
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/transform_army_test
+        run: |
+          poetry run alembic current
+          poetry run alembic history
+
+      - name: Validate schema against models
+        working-directory: apps/adapter
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/transform_army_test
+        run: |
+          # Check if there are any model changes not in migrations
+          poetry run alembic check || {
+            echo "⚠️ Model changes detected that are not in migrations!"
+            echo "Run: alembic revision --autogenerate -m 'description'"
+            exit 1
+          }
+          echo "✅ Schema is consistent with models"
+
+      - name: Test migration rollback
+        working-directory: apps/adapter
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/transform_army_test
+        run: |
+          # Test downgrade
+          poetry run alembic downgrade -1
+          poetry run alembic current
+          
+          # Test upgrade again
+          poetry run alembic upgrade head
+          poetry run alembic current
+          
+          echo "✅ Migration rollback test passed"
+
+  # ==================== Generate Migration Graph ====================
+  generate-graph:
+    name: Generate Migration Graph
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pypoetry
+            apps/adapter/.venv
+          key: ${{ runner.os }}-poetry-${{ hashFiles('apps/adapter/poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-poetry-
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 - --version ${{ env.POETRY_VERSION }}
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        working-directory: apps/adapter
+        run: |
+          poetry config virtualenvs.in-project true
+          poetry install --no-interaction
+
+      - name: Generate migration history
+        working-directory: apps/adapter
+        run: |
+          poetry run alembic history --verbose > migration-history.txt
+          cat migration-history.txt
+
+      - name: List all migrations
+        working-directory: apps/adapter
+        run: |
+          echo "## Migration Files" > migration-list.md
+          echo "" >> migration-list.md
+          ls -la alembic/versions/ >> migration-list.md
+
+      - name: Upload migration documentation
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-docs
+          path: |
+            apps/adapter/migration-history.txt
+            apps/adapter/migration-list.md
+          retention-days: 30
+
+  # ==================== Manual Migration Execution ====================
+  execute-migration:
+    name: Execute Migration (Manual)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    needs: [check-conflicts, validate-schema]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: transform_army_manual
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 - --version ${{ env.POETRY_VERSION }}
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        working-directory: apps/adapter
+        run: |
+          poetry config virtualenvs.in-project true
+          poetry install --no-interaction
+
+      - name: Execute migration action
+        working-directory: apps/adapter
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/transform_army_manual
+        run: |
+          case "${{ github.event.inputs.action }}" in
+            check)
+              echo "Checking migration status..."
+              poetry run alembic current
+              poetry run alembic check
+              ;;
+            upgrade)
+              echo "Upgrading to: ${{ github.event.inputs.target }}"
+              poetry run alembic upgrade ${{ github.event.inputs.target }}
+              poetry run alembic current
+              ;;
+            downgrade)
+              echo "Downgrading to: ${{ github.event.inputs.target }}"
+              poetry run alembic downgrade ${{ github.event.inputs.target }}
+              poetry run alembic current
+              ;;
+            generate)
+              echo "Generating new migration..."
+              poetry run alembic revision --autogenerate -m "auto_generated_$(date +%Y%m%d_%H%M%S)"
+              ;;
+            *)
+              echo "Unknown action: ${{ github.event.inputs.action }}"
+              exit 1
+              ;;
+          esac
+
+      - name: Display migration result
+        working-directory: apps/adapter
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/transform_army_manual
+        run: |
+          echo "## Migration Result" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Action:** ${{ github.event.inputs.action }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Target:** ${{ github.event.inputs.target }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Current State" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          poetry run alembic current >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  # ==================== Documentation Update ====================
+  update-migration-docs:
+    name: Update Migration Documentation
+    runs-on: ubuntu-latest
+    needs: [check-conflicts, validate-schema, generate-graph]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 - --version ${{ env.POETRY_VERSION }}
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        working-directory: apps/adapter
+        run: |
+          poetry config virtualenvs.in-project true
+          poetry install --no-interaction
+
+      - name: Generate migration documentation
+        working-directory: apps/adapter
+        run: |
+          echo "# Database Migrations" > alembic/MIGRATION_STATUS.md
+          echo "" >> alembic/MIGRATION_STATUS.md
+          echo "Last updated: $(date)" >> alembic/MIGRATION_STATUS.md
+          echo "" >> alembic/MIGRATION_STATUS.md
+          echo "## Migration History" >> alembic/MIGRATION_STATUS.md
+          echo '```' >> alembic/MIGRATION_STATUS.md
+          poetry run alembic history --verbose >> alembic/MIGRATION_STATUS.md
+          echo '```' >> alembic/MIGRATION_STATUS.md
+          echo "" >> alembic/MIGRATION_STATUS.md
+          echo "## Current Migrations" >> alembic/MIGRATION_STATUS.md
+          ls -la alembic/versions/ >> alembic/MIGRATION_STATUS.md
+
+      - name: Commit documentation
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add apps/adapter/alembic/MIGRATION_STATUS.md
+          git diff --staged --quiet || git commit -m "docs: Update migration documentation [skip ci]"
+          git push
+
+  # ==================== Migration Summary ====================
+  migration-summary:
+    name: Migration Summary
+    runs-on: ubuntu-latest
+    needs: [check-conflicts, validate-schema, generate-graph]
+    if: always()
+    steps:
+      - name: Create summary
+        run: |
+          echo "## Migration Check Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Conflict Check | ${{ needs.check-conflicts.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Schema Validation | ${{ needs.validate-schema.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Graph Generation | ${{ needs.generate-graph.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [[ "${{ needs.check-conflicts.result }}" == "success" ]] && \
+             [[ "${{ needs.validate-schema.result }}" == "success" ]] && \
+             [[ "${{ needs.generate-graph.result }}" == "success" ]]; then
+            echo "✅ **All migration checks passed!**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Some migration checks failed. Review the logs above.**" >> $GITHUB_STEP_SUMMARY
+          fi

@@ -81,6 +81,7 @@ export type {
   EventReminder,
   ListEventsRequest,
   ListEventsResponse,
+  TimeSlot,
   UpdateEventRequest,
   WorkingHours,
 } from './calendar';

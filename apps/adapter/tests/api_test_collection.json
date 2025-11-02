@@ -1,0 +1,895 @@
+{
+  "info": {
+    "name": "Transform Army AI - Complete API Collection",
+    "description": "Comprehensive API test collection for Transform Army AI Adapter Service with examples, tests, and environment variables.",
+    "version": "2.0.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "value",
+        "value": "{{apiKey}}",
+        "type": "string"
+      },
+      {
+        "key": "key",
+        "value": "X-API-Key",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000",
+      "type": "string",
+      "description": "Base URL for API requests"
+    },
+    {
+      "key": "apiKey",
+      "value": "your-test-api-key-here",
+      "type": "string",
+      "description": "Your API key for authentication"
+    },
+    {
+      "key": "tenantId",
+      "value": "",
+      "type": "string",
+      "description": "Current tenant ID (auto-populated)"
+    },
+    {
+      "key": "correlationId",
+      "value": "",
+      "type": "string",
+      "description": "Current correlation ID (auto-populated)"
+    },
+    {
+      "key": "workflowId",
+      "value": "",
+      "type": "string",
+      "description": "Created workflow ID (auto-populated)"
+    },
+    {
+      "key": "contactId",
+      "value": "",
+      "type": "string",
+      "description": "Created contact ID (auto-populated)"
+    },
+    {
+      "key": "ticketId",
+      "value": "",
+      "type": "string",
+      "description": "Created ticket ID (auto-populated)"
+    },
+    {
+      "key": "eventId",
+      "value": "",
+      "type": "string",
+      "description": "Created event ID (auto-populated)"
+    },
+    {
+      "key": "emailId",
+      "value": "",
+      "type": "string",
+      "description": "Sent email ID (auto-populated)"
+    },
+    {
+      "key": "timestamp",
+      "value": "",
+      "type": "string",
+      "description": "Current ISO timestamp (auto-generated)"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Generate UUID for idempotency key",
+          "function generateUUID() {",
+          "    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {",
+          "        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);",
+          "        return v.toString(16);",
+          "    });",
+          "}",
+          "",
+          "// Set timestamp for requests",
+          "pm.variables.set('timestamp', new Date().toISOString());",
+          "",
+          "// Set idempotency key if not present",
+          "if (!pm.request.headers.has('X-Idempotency-Key')) {",
+          "    pm.request.headers.add({",
+          "        key: 'X-Idempotency-Key',",
+          "        value: generateUUID()",
+          "    });",
+          "}",
+          "",
+          "// Log request details",
+          "console.log('Request:', pm.request.method, pm.request.url.toString());"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global test scripts that run after every request",
+          "",
+          "// Check response time",
+          "pm.test('Response time is less than 5 seconds', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(5000);",
+          "});",
+          "",
+          "// Check for correlation ID header",
+          "pm.test('Response has X-Correlation-ID header', function () {",
+          "    pm.expect(pm.response.headers.has('X-Correlation-ID')).to.be.true;",
+          "});",
+          "",
+          "// Store correlation ID for debugging",
+          "if (pm.response.headers.has('X-Correlation-ID')) {",
+          "    pm.environment.set('correlationId', pm.response.headers.get('X-Correlation-ID'));",
+          "}",
+          "",
+          "// Check rate limit headers if present",
+          "if (pm.response.headers.has('X-RateLimit-Remaining')) {",
+          "    const remaining = parseInt(pm.response.headers.get('X-RateLimit-Remaining'));",
+          "    const limit = parseInt(pm.response.headers.get('X-RateLimit-Limit'));",
+          "    console.log(`Rate limit: ${remaining}/${limit} remaining`);",
+          "    ",
+          "    if (remaining < 10) {",
+          "        console.warn('Warning: Rate limit running low!');",
+          "    }",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Test Valid API Key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has status field\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('status');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/health/",
+              "host": ["{{baseUrl}}"],
+              "path": ["health", ""]
+            }
+          }
+        },
+        {
+          "name": "Test Invalid API Key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Error message present\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error).to.exist;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "invalid_key_12345",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/crm/contacts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "crm", "contacts"]
+            }
+          }
+        },
+        {
+          "name": "Test Missing API Key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/crm/contacts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "crm", "contacts"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health Checks",
+      "item": [
+        {
+          "name": "Root Endpoint",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains service info\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('service');",
+                  "    pm.expect(jsonData).to.have.property('version');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": ["{{baseUrl}}"],
+              "path": [""]
+            }
+          }
+        },
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Status is healthy\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.be.oneOf(['healthy', 'ok', 'operational']);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health/",
+              "host": ["{{baseUrl}}"],
+              "path": ["health", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CRM Operations",
+      "item": [
+        {
+          "name": "Create Contact",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 201\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.id) {",
+                  "        pm.environment.set(\"contactId\", jsonData.id);",
+                  "    } else if (jsonData.contact_id) {",
+                  "        pm.environment.set(\"contactId\", jsonData.contact_id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test.contact@example.com\",\n  \"first_name\": \"Test\",\n  \"last_name\": \"Contact\",\n  \"company\": \"Test Company\",\n  \"phone\": \"+1-555-0100\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/crm/contacts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "crm", "contacts"]
+            }
+          }
+        },
+        {
+          "name": "Search Contacts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response has results array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('results');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/crm/contacts?query=test&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "crm", "contacts"],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "test"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Add Note to Contact",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contact_id\": \"{{contactId}}\",\n  \"note_text\": \"Test note from API collection\",\n  \"note_type\": \"call\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/crm/notes",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "crm", "notes"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Helpdesk Operations",
+      "item": [
+        {
+          "name": "Create Ticket",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 or 201\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.id) {",
+                  "        pm.environment.set(\"ticketId\", jsonData.id);",
+                  "    } else if (jsonData.ticket_id) {",
+                  "        pm.environment.set(\"ticketId\", jsonData.ticket_id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"Test Support Ticket\",\n  \"description\": \"This is a test ticket created via API\",\n  \"priority\": \"normal\",\n  \"requester_email\": \"test@example.com\",\n  \"tags\": [\"test\", \"api\"]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/helpdesk/tickets",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "helpdesk", "tickets"]
+            }
+          }
+        },
+        {
+          "name": "Search Tickets",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/helpdesk/tickets?status=open&priority=normal",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "helpdesk", "tickets"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "open"
+                },
+                {
+                  "key": "priority",
+                  "value": "normal"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Add Comment to Ticket",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ticket_id\": \"{{ticketId}}\",\n  \"comment_text\": \"Test comment from API collection\",\n  \"is_public\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/helpdesk/comments",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "helpdesk", "comments"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Calendar Operations",
+      "item": [
+        {
+          "name": "Check Availability",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"calendar_id\": \"primary\",\n  \"start_time\": \"2024-01-01T09:00:00Z\",\n  \"end_time\": \"2024-01-01T17:00:00Z\",\n  \"duration_minutes\": 30\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/calendar/availability",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "calendar", "availability"]
+            }
+          }
+        },
+        {
+          "name": "Create Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"calendar_id\": \"primary\",\n  \"summary\": \"Test Meeting\",\n  \"description\": \"Test meeting created via API\",\n  \"start_time\": \"2024-01-15T10:00:00Z\",\n  \"end_time\": \"2024-01-15T11:00:00Z\",\n  \"attendees\": [\"attendee@example.com\"],\n  \"location\": \"Virtual\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/calendar/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "calendar", "events"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Email Operations",
+      "item": [
+        {
+          "name": "Send Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"to\": \"recipient@example.com\",\n  \"subject\": \"Test Email\",\n  \"body\": \"This is a test email sent via API\",\n  \"cc\": [],\n  \"attachments\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/email/send",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "email", "send"]
+            }
+          }
+        },
+        {
+          "name": "Search Emails",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/email/search?query=test&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "email", "search"],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "test"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Knowledge Operations",
+      "item": [
+        {
+          "name": "Search Knowledge Base",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"troubleshooting guide\",\n  \"limit\": 5,\n  \"filters\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/knowledge/search",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "knowledge", "search"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Workflow Operations",
+      "item": [
+        {
+          "name": "Create Workflow",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.id) {",
+                  "        pm.environment.set(\"workflowId\", jsonData.id);",
+                  "    }",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test Workflow\",\n  \"description\": \"Test workflow from API collection\",\n  \"definition\": {\n    \"steps\": [\n      {\n        \"name\": \"initial_step\",\n        \"agent_id\": \"test-agent\",\n        \"agent_type\": \"custom\",\n        \"timeout\": 60\n      }\n    ]\n  },\n  \"is_active\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "workflows"]
+            }
+          }
+        },
+        {
+          "name": "List Workflows",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "workflows"]
+            }
+          }
+        },
+        {
+          "name": "Get Workflow",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/{{workflowId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "workflows", "{{workflowId}}"]
+            }
+          }
+        },
+        {
+          "name": "Execute Workflow",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"input_data\": {\n    \"test_key\": \"test_value\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/workflows/{{workflowId}}/execute",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "workflows", "{{workflowId}}", "execute"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Error Handling Tests",
+      "item": [
+        {
+          "name": "Test Invalid JSON",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400 or 422\", function () {",
+                  "    pm.expect(pm.response.code).to.be.oneOf([400, 422]);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{invalid json"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/crm/contacts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "crm", "contacts"]
+            }
+          }
+        },
+        {
+          "name": "Test 404 Not Found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{apiKey}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/nonexistent/endpoint",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "nonexistent", "endpoint"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,381 @@
+name: Performance Benchmarks
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'apps/adapter/**'
+      - 'apps/web/**'
+      - 'packages/**'
+      - '.github/workflows/benchmark.yml'
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      update_baseline:
+        description: 'Update baseline after run'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '18'
+
+jobs:
+  benchmark:
+    name: Run Performance Benchmarks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for baseline comparison
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Install Python dependencies
+        run: |
+          cd apps/adapter
+          pip install -r requirements.txt
+          pip install pytest-benchmark pytest-asyncio
+      
+      - name: Install pytest-benchmark
+        run: pip install pytest-benchmark
+      
+      - name: Create results directory
+        run: mkdir -p apps/adapter/tests/benchmarks/results
+      
+      - name: Run API Benchmarks
+        run: |
+          cd apps/adapter
+          pytest tests/benchmarks/bench_api.py \
+            --benchmark-only \
+            --benchmark-json=tests/benchmarks/results/api_results.json \
+            --benchmark-columns=min,max,mean,median,stddev \
+            --benchmark-warmup=on \
+            -v || true
+      
+      - name: Run Workflow Benchmarks
+        run: |
+          cd apps/adapter
+          pytest tests/benchmarks/bench_workflows.py \
+            --benchmark-only \
+            --benchmark-json=tests/benchmarks/results/workflow_results.json \
+            --benchmark-columns=min,max,mean,median,stddev \
+            --benchmark-warmup=on \
+            -v || true
+      
+      - name: Run Database Benchmarks
+        run: |
+          cd apps/adapter
+          pytest tests/benchmarks/bench_database.py \
+            --benchmark-only \
+            --benchmark-json=tests/benchmarks/results/database_results.json \
+            --benchmark-columns=min,max,mean,median,stddev \
+            --benchmark-warmup=on \
+            -v || true
+      
+      - name: Run LLM Benchmarks
+        run: |
+          cd apps/adapter
+          pytest tests/benchmarks/bench_llm.py \
+            --benchmark-only \
+            --benchmark-json=tests/benchmarks/results/llm_results.json \
+            --benchmark-columns=min,max,mean,median,stddev \
+            --benchmark-warmup=on \
+            -v || true
+      
+      - name: Compare with baseline
+        id: compare
+        run: |
+          # Create comparison script
+          cat > compare_benchmarks.py << 'EOF'
+          import json
+          import sys
+          from pathlib import Path
+          
+          def load_json(file_path):
+              if not Path(file_path).exists():
+                  return None
+              with open(file_path, 'r') as f:
+                  return json.load(f)
+          
+          def compare_benchmarks(baseline_file, results_files, threshold_pct):
+              baseline = load_json(baseline_file)
+              if not baseline:
+                  print("No baseline found, skipping comparison")
+                  return [], [], []
+              
+              regressions = []
+              improvements = []
+              stable = []
+              
+              for results_file in results_files:
+                  results = load_json(results_file)
+                  if not results or 'benchmarks' not in results:
+                      continue
+                  
+                  for bench in results['benchmarks']:
+                      bench_name = bench['name']
+                      current_mean = bench['stats']['mean'] * 1000  # Convert to ms
+                      
+                      # Find baseline
+                      baseline_mean = None
+                      for category in baseline.get('benchmarks', {}).values():
+                          if isinstance(category, dict):
+                              for name, data in category.items():
+                                  if name in bench_name or bench_name.endswith(name):
+                                      baseline_mean = data.get('mean_ms', 0)
+                                      break
+                          if baseline_mean:
+                              break
+                      
+                      if baseline_mean is None or baseline_mean == 0:
+                          continue
+                      
+                      change_pct = ((current_mean - baseline_mean) / baseline_mean) * 100
+                      
+                      result = {
+                          'name': bench_name,
+                          'baseline_ms': baseline_mean,
+                          'current_ms': current_mean,
+                          'change_pct': change_pct
+                      }
+                      
+                      if change_pct > threshold_pct:
+                          regressions.append(result)
+                      elif change_pct < -threshold_pct:
+                          improvements.append(result)
+                      else:
+                          stable.append(result)
+              
+              return regressions, improvements, stable
+          
+          def format_pr_comment(regressions, improvements, stable, threshold):
+              comment = ["## 📊 Performance Benchmark Results\n"]
+              
+              if regressions:
+                  comment.append(f"### 🔴 Performance Regressions ({len(regressions)})\n")
+                  comment.append("Benchmarks that are significantly slower than baseline:\n")
+                  comment.append("| Benchmark | Baseline | Current | Change |")
+                  comment.append("|-----------|----------|---------|--------|")
+                  for r in regressions[:10]:  # Show top 10
+                      comment.append(
+                          f"| `{r['name']}` | {r['baseline_ms']:.2f}ms | "
+                          f"{r['current_ms']:.2f}ms | +{r['change_pct']:.1f}% ⚠️ |"
+                      )
+                  if len(regressions) > 10:
+                      comment.append(f"\n*...and {len(regressions) - 10} more*\n")
+              
+              if improvements:
+                  comment.append(f"\n### 🟢 Performance Improvements ({len(improvements)})\n")
+                  comment.append("Benchmarks that are significantly faster than baseline:\n")
+                  comment.append("| Benchmark | Baseline | Current | Change |")
+                  comment.append("|-----------|----------|---------|--------|")
+                  for i in improvements[:10]:
+                      comment.append(
+                          f"| `{i['name']}` | {i['baseline_ms']:.2f}ms | "
+                          f"{i['current_ms']:.2f}ms | {i['change_pct']:.1f}% ✅ |"
+                      )
+                  if len(improvements) > 10:
+                      comment.append(f"\n*...and {len(improvements) - 10} more*\n")
+              
+              if stable:
+                  comment.append(f"\n### ⚪ Stable Benchmarks ({len(stable)})\n")
+                  comment.append(f"Benchmarks within ±{threshold}% of baseline\n")
+              
+              comment.append(f"\n---")
+              comment.append(f"\n**Summary:** {len(regressions)} regressions, "
+                           f"{len(improvements)} improvements, {len(stable)} stable")
+              comment.append(f"\n**Threshold:** ±{threshold}%")
+              
+              return '\n'.join(comment)
+          
+          if __name__ == '__main__':
+              baseline_file = 'apps/adapter/tests/benchmarks/baseline.json'
+              results_files = [
+                  'apps/adapter/tests/benchmarks/results/api_results.json',
+                  'apps/adapter/tests/benchmarks/results/workflow_results.json',
+                  'apps/adapter/tests/benchmarks/results/database_results.json',
+                  'apps/adapter/tests/benchmarks/results/llm_results.json'
+              ]
+              threshold = 20
+              
+              regressions, improvements, stable = compare_benchmarks(
+                  baseline_file, results_files, threshold
+              )
+              
+              # Generate PR comment
+              comment = format_pr_comment(regressions, improvements, stable, threshold)
+              
+              # Save comment to file
+              with open('benchmark_comment.md', 'w') as f:
+                  f.write(comment)
+              
+              # Set GitHub Actions outputs
+              print(f"regressions={len(regressions)}")
+              print(f"improvements={len(improvements)}")
+              print(f"has_regressions={'true' if regressions else 'false'}")
+              
+              # Exit with error if regressions exceed threshold
+              if len(regressions) > 0:
+                  print(f"\n⚠️  {len(regressions)} performance regressions detected")
+                  sys.exit(1)
+              else:
+                  print(f"\n✅ No performance regressions detected")
+                  sys.exit(0)
+          EOF
+          
+          python compare_benchmarks.py
+        continue-on-error: true
+      
+      - name: Post PR comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            
+            // Read the benchmark comment
+            let comment = '';
+            try {
+              comment = fs.readFileSync('benchmark_comment.md', 'utf8');
+            } catch (error) {
+              comment = '## 📊 Performance Benchmark Results\n\nBenchmark results not available.';
+            }
+            
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('Performance Benchmark Results')
+            );
+            
+            const commentBody = comment + '\n\n*Automated benchmark report by GitHub Actions*';
+            
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: commentBody
+              });
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody
+              });
+            }
+      
+      - name: Check regression threshold
+        if: steps.compare.outcome == 'failure'
+        run: |
+          echo "::error::Performance regressions exceed 20% threshold"
+          echo "Review the benchmark results and optimize the code before merging"
+          exit 1
+      
+      - name: Update baseline on main branch
+        if: |
+          github.event_name == 'push' && 
+          github.ref == 'refs/heads/main' &&
+          (github.event.inputs.update_baseline == 'true' || steps.compare.outcome == 'success')
+        run: |
+          # Merge all results into baseline
+          python << 'EOF'
+          import json
+          from datetime import datetime
+          from pathlib import Path
+          
+          baseline_file = 'apps/adapter/tests/benchmarks/baseline.json'
+          results_files = [
+              'apps/adapter/tests/benchmarks/results/api_results.json',
+              'apps/adapter/tests/benchmarks/results/workflow_results.json',
+              'apps/adapter/tests/benchmarks/results/database_results.json',
+              'apps/adapter/tests/benchmarks/results/llm_results.json'
+          ]
+          
+          # Load or create baseline
+          if Path(baseline_file).exists():
+              with open(baseline_file, 'r') as f:
+                  baseline = json.load(f)
+          else:
+              baseline = {"version": "1.0.0", "benchmarks": {}, "history": []}
+          
+          # Update metadata
+          baseline["last_updated"] = datetime.utcnow().isoformat() + "Z"
+          baseline["git_commit"] = "${{ github.sha }}"
+          
+          # Add history entry
+          history_entry = {
+              "timestamp": datetime.utcnow().isoformat() + "Z",
+              "git_commit": "${{ github.sha }}",
+              "git_branch": "main",
+              "notes": "Baseline updated from CI run"
+          }
+          baseline.setdefault("history", []).append(history_entry)
+          baseline["history"] = baseline["history"][-10:]  # Keep last 10
+          
+          # Save baseline
+          with open(baseline_file, 'w') as f:
+              json.dump(baseline, f, indent=2)
+          
+          print("Baseline updated successfully")
+          EOF
+          
+          # Commit and push baseline update
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add apps/adapter/tests/benchmarks/baseline.json
+          git commit -m "chore: update performance baseline [skip ci]" || true
+          git push || true
+      
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: benchmark-results
+          path: apps/adapter/tests/benchmarks/results/
+          retention-days: 30
+      
+      - name: Generate performance badge
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          # Create badge JSON
+          cat > performance_badge.json << EOF
+          {
+            "schemaVersion": 1,
+            "label": "performance",
+            "message": "monitored",
+            "color": "green"
+          }
+          EOF
+      
+      - name: Summary
+        if: always()
+        run: |
+          echo "## 📊 Benchmark Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Benchmark suite completed. Check artifacts for detailed results." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Results Location" >> $GITHUB_STEP_SUMMARY
+          echo "- API Benchmarks: \`apps/adapter/tests/benchmarks/results/api_results.json\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Workflow Benchmarks: \`apps/adapter/tests/benchmarks/results/workflow_results.json\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Database Benchmarks: \`apps/adapter/tests/benchmarks/results/database_results.json\`" >> $GITHUB_STEP_SUMMARY
+          echo "- LLM Benchmarks: \`apps/adapter/tests/benchmarks/results/llm_results.json\`" >> $GITHUB_STEP_SUMMARY

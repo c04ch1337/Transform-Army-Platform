@@ -80,6 +80,39 @@ test-coverage: ## Run tests with coverage report
 	cd apps/evals && poetry run pytest --cov=tests --cov-report=html --cov-report=term
 
 # =============================================================================
+# Validation & Testing Scripts
+# =============================================================================
+
+test-all: ## Run complete test suite with all validations
+	@echo "$(GREEN)Running complete test suite...$(NC)"
+	bash scripts/run-all-tests.sh
+
+test-frontend-complete: ## Run comprehensive frontend tests
+	@echo "$(GREEN)Running frontend test suite...$(NC)"
+	bash scripts/test-frontend-complete.sh
+
+verify-integration: ## Verify all system integrations
+	@echo "$(GREEN)Verifying integrations...$(NC)"
+	bash scripts/verify-integration.sh
+
+health-report: ## Generate system health report
+	@echo "$(GREEN)Generating system health report...$(NC)"
+	bash scripts/generate-health-report.sh
+
+validate-env: ## Validate environment configuration
+	@echo "$(GREEN)Validating environment...$(NC)"
+	bash scripts/validate-env.sh
+
+validate-production: test-all verify-integration health-report ## Complete production readiness validation
+	@echo "$(GREEN)Production validation complete!$(NC)"
+	@echo "$(CYAN)Review test results in test-results/ directory$(NC)"
+
+generate-report: ## Generate final validation report
+	@echo "$(GREEN)Generating final validation report...$(NC)"
+	@echo "$(YELLOW)Report generation requires manual review of test results$(NC)"
+	@echo "$(CYAN)See FINAL_VALIDATION_REPORT.md for details$(NC)"
+
+# =============================================================================
 # Building
 # =============================================================================
 

@@ -25,6 +25,15 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    # Resource limits for production stability
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
 
   # Redis Cache
   redis:
@@ -46,6 +55,15 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    # Resource limits for production stability
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
   # Adapter Service (FastAPI)
   adapter:
@@ -61,6 +79,8 @@ services:
       - API_SECRET_KEY=${API_SECRET_KEY}
       - SENTRY_DSN=${SENTRY_DSN}
       - ADAPTER_WORKERS=4
+      - DB_MAX_RETRIES=30
+      - DB_RETRY_INTERVAL=2
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,6 +93,52 @@ services:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Resource limits for production stability
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+
+  # Background Job Worker
+  worker:
+    build:
+      context: ../../apps/adapter
+      dockerfile: Dockerfile.worker
+      args:
+        - BUILD_ENV=production
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - WORKER_QUEUE=default
+      - API_SECRET_KEY=${API_SECRET_KEY}
+      - SENTRY_DSN=${SENTRY_DSN}
+      - DB_MAX_RETRIES=30
+      - DB_RETRY_INTERVAL=2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      adapter:
+        condition: service_started
+    networks:
+      - transform-army-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
       retries: 3
       start_period: 40s
     logging:
@@ -80,6 +146,17 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    # Resource limits - workers can be resource intensive
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+      # Enable scaling workers independently
+      replicas: 2
 
   # Web Application (Next.js)
   web:
@@ -98,17 +175,27 @@ services:
     networks:
       - transform-army-network
     restart: unless-stopped
+    # Health check updated to account for Next.js startup time
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 40s
+      retries: 5
+      start_period: 60s
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+    # Resource limits for production stability
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
 
   # Nginx Reverse Proxy
   nginx:
@@ -132,6 +219,15 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    # Resource limits for production stability
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
 networks:
   transform-army-network:

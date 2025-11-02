@@ -197,3 +197,12 @@ export const ListEventsResponseSchema = z.object({
   pagination: PaginationResponseSchema.optional().describe('Pagination metadata'),
 });
 export type ListEventsResponse = z.infer<typeof ListEventsResponseSchema>;
+
+/**
+ * An available time slot (used in API responses).
+ */
+export const TimeSlotSchema = z.object({
+  start_time: z.string().describe('Slot start time (ISO 8601)'),
+  end_time: z.string().describe('Slot end time (ISO 8601)'),
+});
+export type TimeSlot = z.infer<typeof TimeSlotSchema>;

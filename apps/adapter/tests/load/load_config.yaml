@@ -1,0 +1,451 @@
+# Load Testing Configuration for Transform Army AI Adapter Service
+# 
+# This configuration defines test scenarios, performance thresholds,
+# and environment-specific settings for load testing.
+
+# ============================================================================
+# Environment Configuration
+# ============================================================================
+
+environments:
+  local:
+    base_url: "http://localhost:8000"
+    description: "Local development environment"
+    database:
+      host: "localhost"
+      port: 5432
+      database: "transform_army"
+    redis_url: "redis://localhost:6379"
+    
+  staging:
+    base_url: "https://adapter-staging.transform-army.ai"
+    description: "Staging environment"
+    database:
+      host: "staging-db.transform-army.ai"
+      port: 5432
+      database: "transform_army_staging"
+    redis_url: "redis://staging-redis.transform-army.ai:6379"
+    
+  production:
+    base_url: "https://adapter.transform-army.ai"
+    description: "Production environment"
+    database:
+      host: "prod-db.transform-army.ai"
+      port: 5432
+      database: "transform_army"
+    redis_url: "redis://prod-redis.transform-army.ai:6379"
+
+# ============================================================================
+# Test Scenarios
+# ============================================================================
+
+scenarios:
+  # Smoke Test - Minimal load sanity check
+  smoke:
+    description: "Quick sanity check with minimal load"
+    tool: "locust"
+    users: 1
+    spawn_rate: 1
+    duration: "1m"
+    expected_rps: 5
+    purpose: "Verify endpoints are functional before running heavier tests"
+    
+  # Load Test - Average production load
+  load:
+    description: "Simulate average production load"
+    tool: "locust"
+    users: 100
+    spawn_rate: 10
+    duration: "10m"
+    expected_rps: 50
+    purpose: "Test system under normal operating conditions"
+    
+  # Stress Test - Find breaking point
+  stress:
+    description: "Push system to find breaking point"
+    tool: "k6"
+    stages:
+      - duration: "2m"
+        target: 100
+      - duration: "5m"
+        target: 200
+      - duration: "5m"
+        target: 300
+      - duration: "5m"
+        target: 400
+      - duration: "2m"
+        target: 500
+      - duration: "1m"
+        target: 0
+    expected_rps: 200
+    purpose: "Identify maximum capacity and failure modes"
+    
+  # Spike Test - Sudden traffic spike
+  spike:
+    description: "Simulate sudden traffic spike"
+    tool: "k6"
+    stages:
+      - duration: "10s"
+        target: 200
+      - duration: "3m"
+        target: 200
+      - duration: "10s"
+        target: 0
+    expected_rps: 100
+    purpose: "Test system resilience to sudden load increases"
+    
+  # Soak Test - Long duration for memory leaks
+  soak:
+    description: "Long-running test to detect memory leaks"
+    tool: "locust"
+    users: 50
+    spawn_rate: 5
+    duration: "2h"
+    expected_rps: 25
+    purpose: "Detect memory leaks and performance degradation over time"
+    
+  # Provider Load - Focus on external integrations
+  provider_load:
+    description: "Focus on provider integration endpoints"
+    tool: "locust"
+    users: 50
+    spawn_rate: 5
+    duration: "10m"
+    expected_rps: 20
+    user_class: "ProviderLoadUser"
+    purpose: "Test external service integration under load"
+    
+  # Database Load - Database-specific testing
+  database_load:
+    description: "Database performance testing"
+    tool: "python"
+    concurrent_connections: 100
+    queries_per_second: 500
+    duration: "5m"
+    purpose: "Test database performance and connection pooling"
+
+# ============================================================================
+# Performance Thresholds
+# ============================================================================
+
+thresholds:
+  # API Response Times (milliseconds)
+  response_times:
+    health_check:
+      p50: 50      # 50th percentile
+      p95: 100     # 95th percentile
+      p99: 200     # 99th percentile
+      
+    read_operations:
+      p50: 200
+      p95: 500
+      p99: 1000
+      
+    write_operations:
+      p50: 300
+      p95: 800
+      p99: 1500
+      
+    workflow_execution:
+      p50: 2000
+      p95: 5000
+      p99: 8000
+      
+    provider_calls:
+      p50: 500
+      p95: 2000
+      p99: 3000
+  
+  # Error Rates
+  error_rates:
+    max_error_rate: 0.05        # 5% maximum error rate
+    max_timeout_rate: 0.01      # 1% maximum timeout rate
+    max_rate_limit_hits: 100    # Maximum rate limit hits per test
+  
+  # Throughput
+  throughput:
+    min_rps_smoke: 5
+    min_rps_load: 40
+    min_rps_stress: 150
+    
+  # Resource Utilization
+  resources:
+    max_cpu_percent: 80
+    max_memory_percent: 85
+    max_connection_pool_utilization: 90
+    
+  # Database
+  database:
+    max_query_time_ms: 100
+    max_connection_wait_ms: 50
+    max_active_connections: 90
+    
+  # Multi-Tenancy
+  multi_tenancy:
+    min_isolation_success_rate: 0.99
+    
+  # Authentication
+  authentication:
+    min_success_rate: 0.95
+
+# ============================================================================
+# Test Data Configuration
+# ============================================================================
+
+test_data:
+  tenants:
+    - "tenant_001"
+    - "tenant_002"
+    - "tenant_003"
+    - "tenant_004"
+    - "tenant_005"
+    
+  contact_templates:
+    domains:
+      - "example.com"
+      - "testcompany.com"
+      - "loadtest.org"
+    companies:
+      - "Acme Corp"
+      - "Tech Innovations"
+      - "Global Solutions"
+      - "Digital Dynamics"
+      - "Enterprise Systems"
+    titles:
+      - "VP Sales"
+      - "Director"
+      - "Manager"
+      - "Engineer"
+      - "Analyst"
+      - "Consultant"
+      
+  ticket_templates:
+    subjects:
+      - "Login issue"
+      - "Performance problem"
+      - "Feature request"
+      - "Bug report"
+      - "Integration question"
+      - "Data sync error"
+    priorities:
+      - "low"
+      - "normal"
+      - "high"
+      - "urgent"
+    tags:
+      - ["api", "integration"]
+      - ["ui", "performance"]
+      - ["authentication", "security"]
+      - ["data", "sync"]
+
+# ============================================================================
+# Workflow Configuration
+# ============================================================================
+
+workflows:
+  lead_qualification:
+    weight: 40  # 40% of workflow executions
+    avg_duration_ms: 2000
+    
+  support_triage:
+    weight: 35  # 35% of workflow executions
+    avg_duration_ms: 1500
+    
+  ops_monitoring:
+    weight: 25  # 25% of workflow executions
+    avg_duration_ms: 1000
+
+# ============================================================================
+# Endpoint Weights (for mixed load testing)
+# ============================================================================
+
+endpoint_weights:
+  health: 5          # 5% - Monitoring
+  crm: 40            # 40% - CRM operations
+  helpdesk: 30       # 30% - Support tickets
+  workflows: 15      # 15% - Workflow automation
+  knowledge: 5       # 5% - Knowledge search
+  admin: 5           # 5% - Admin operations
+
+# ============================================================================
+# Load Test Execution Settings
+# ============================================================================
+
+execution:
+  locust:
+    # Default Locust settings
+    headless: true
+    html_report: true
+    csv_report: true
+    log_level: "INFO"
+    reset_stats: false
+    
+  k6:
+    # Default k6 settings
+    output: "json"
+    quiet: false
+    no_summary: false
+    summary_trend_stats: "min,avg,med,p(95),p(99),max"
+    
+  database:
+    # Database test settings
+    pool_min_size: 10
+    pool_max_size: 100
+    connection_timeout: 30
+    command_timeout: 60
+    
+  results:
+    # Results storage
+    output_dir: "./load_test_results"
+    json_output: true
+    html_report: true
+    csv_export: true
+    compare_to_baseline: true
+
+# ============================================================================
+# Monitoring and Alerting
+# ============================================================================
+
+monitoring:
+  metrics_endpoints:
+    - "/metrics"
+    - "/health"
+    
+  sample_interval: 10  # seconds
+  
+  alerts:
+    - name: "High Error Rate"
+      condition: "error_rate > 0.05"
+      severity: "critical"
+      
+    - name: "Slow Response Times"
+      condition: "p95_response_time > 1000"
+      severity: "warning"
+      
+    - name: "Connection Pool Exhaustion"
+      condition: "pool_utilization > 0.90"
+      severity: "critical"
+      
+    - name: "Rate Limiting Triggered"
+      condition: "rate_limit_hits > 100"
+      severity: "warning"
+
+# ============================================================================
+# CI/CD Integration
+# ============================================================================
+
+ci_cd:
+  # When to run load tests
+  triggers:
+    - "release_candidate"
+    - "weekly_schedule"
+    - "manual"
+    
+  # Failure criteria
+  fail_conditions:
+    - "error_rate > 0.05"
+    - "p95_response_time > 1000"
+    - "throughput < baseline * 0.9"  # 10% regression
+    
+  # Success criteria
+  success_criteria:
+    - "error_rate < 0.01"
+    - "p95_response_time < 500"
+    - "throughput >= baseline * 0.95"  # Within 5% of baseline
+    
+  # Baseline comparison
+  baseline_comparison:
+    enabled: true
+    baseline_file: "baselines.json"
+    regression_threshold: 0.10  # 10% performance regression
+
+# ============================================================================
+# Cleanup Configuration
+# ============================================================================
+
+cleanup:
+  # Clean up test data after tests
+  enabled: true
+  
+  # What to clean up
+  remove_test_contacts: true
+  remove_test_tickets: true
+  remove_test_workflows: true
+  
+  # Identification patterns
+  test_patterns:
+    - "loadtest.*@example.com"
+    - "k6test.*@example.com"
+    - ".*Load Test.*"
+    - ".*K6.*"
+
+# ============================================================================
+# Advanced Settings
+# ============================================================================
+
+advanced:
+  # Connection settings
+  connection:
+    timeout: 30
+    keep_alive: true
+    pool_connections: 100
+    pool_maxsize: 100
+    
+  # Retry settings
+  retry:
+    max_retries: 3
+    backoff_factor: 0.3
+    status_forcelist: [500, 502, 503, 504]
+    
+  # Think time (seconds between requests)
+  think_time:
+    min: 1
+    max: 5
+    distribution: "uniform"
+    
+  # Rate limiting simulation
+  rate_limiting:
+    enabled: false
+    requests_per_second: 100
+    burst: 10
+    
+  # Network simulation
+  network:
+    simulate_latency: false
+    min_latency_ms: 10
+    max_latency_ms: 100
+    packet_loss_percent: 0
+
+# ============================================================================
+# Reporting Configuration
+# ============================================================================
+
+reporting:
+  # Report formats
+  formats:
+    - "html"
+    - "json"
+    - "csv"
+    
+  # What to include in reports
+  include:
+    - "summary_statistics"
+    - "response_time_distribution"
+    - "error_analysis"
+    - "throughput_over_time"
+    - "resource_utilization"
+    - "endpoint_breakdown"
+    - "failure_details"
+    
+  # Report destinations
+  destinations:
+    local_file: true
+    s3_bucket: null
+    slack_webhook: null
+    email: null
+    
+  # Historical comparison
+  historical:
+    enabled: true
+    retention_days: 90
+    comparison_points: 5  # Compare with last 5 tests
